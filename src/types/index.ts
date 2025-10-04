@@ -58,6 +58,7 @@ export interface CardConfig {
   target_date_offset?: number;
   creation_date?: string;
   creation_relative?: number;
+  progress_offset?: number;
   
   // Timer entity configuration (enhanced for Alexa)
   timer_entity?: string;

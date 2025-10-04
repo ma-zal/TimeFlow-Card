@@ -37,6 +37,7 @@ export class TimeFlowCardEditor extends LitElement {
             'creation_relative': 'The number of seconds before the `target_date` that the progress circle should start. Use this relative value as an alternative to specifying a fixed `creation_date`. Examples: 60 (for 1 minute), 3600 (for 1 hour).',
             'target_date': 'Date of the countdown and progress circle end. Examples: "2024-12-31T23:59:59", "{{ states(\'input_datetime.deadline\') }}"',
             'target_date_offset': 'Offset in seconds to adjust the "target_date". Positive values move the target into the future, negative values into the past. Examples: 300 (adds 5 minutes), -60 (subtracts 1 minute).',
+            'progress_offset': 'Number of seconds to offset the progress circle. Does not affect the countdown text. Examples: 60 (for 1 minute), -300 (for 5 minutes earlier)',
             'progress_color': 'Examples: "#FF0000", "red", "rgb(255,0,0)", "{{ states(\'input_text.color\') }}"',
             'background_color': 'Examples: "#00FF00", "blue", "rgba(0,255,0,0.5)", "{{ \'red\' if is_state(\'switch.alert\', \'on\') else \'green\' }}"',
             'color': 'Examples: "#333333", "white", "rgb(0,0,0)", "{{ states(\'input_text.color\') }}"',
@@ -76,6 +77,7 @@ export class TimeFlowCardEditor extends LitElement {
             { name: 'target_date', required: false, selector: { text: {} } },
             { name: "target_date_offset", required: false, selector: { number: {} } },
             { name: 'timer_entity', required: false, selector: { entity: { domain: 'timer' } } },
+            { name: 'progress_offset', required: false, selector: { number: {} } },
             {
                 type: "expandable",
                 title: "Appearance",
