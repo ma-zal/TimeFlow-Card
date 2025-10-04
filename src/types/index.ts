@@ -50,10 +50,14 @@ export interface ActionHandlerEvent extends Event {
   };
 }
 
-// Progress color configuration for dynamic color changes based on progress
-export interface ProgressConditionalColorConfig {
+// Progress step configuration for dynamic property changes based on progress
+export interface ProgressStepConfig {
   from: number;  // Progress percentage threshold (0-100)
-  color: string; // Color to use when progress >= from
+  progress_color?: string; // Progress color to use when progress >= from
+  background_color?: string; // Background color to use when progress >= from
+  text_color?: string; // Text color to use when progress >= from
+  stroke_width?: number; // Progress circle stroke width to use when progress >= from
+  expired_text?: string; // Custom expired text to use when progress >= from
 }
 
 export interface CardConfig {
@@ -93,7 +97,7 @@ export interface CardConfig {
   text_color?: string;
   background_color?: string;
   progress_color?: string;
-  progress_colors?: ProgressConditionalColorConfig[];
+  progress_steps?: ProgressStepConfig[];
   primary_color?: string;
   secondary_color?: string;
   stroke_width?: number;
