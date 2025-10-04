@@ -56,7 +56,7 @@ This card offers a wide range of options to customize its appearance and behavio
 | `color` | string | `"#FCFCFC"` | Primary text color. Supports templates. |
 | `background_color` | string | `"#000001"` | Card background color. Supports templates. |
 | `progress_color` | string | `"#C366CD"` | Progress bar color. Supports templates. |
-| `progress_steps` | array | `null` | Dynamic configuration changes based on percentage thresholds. Array of objects with `from` (percentage 0-100) and conditional properties: `progress_color`, `background_color`, `text_color`. Example: `[{from: 0, progress_color: "#00ff00", background_color: "#000"}, {from: 75, progress_color: "#ff0000", background_color: "#300", text_color: "#fff"}]`. Properties override corresponding base config when threshold is reached. Order doesn't matter - highest applicable threshold is automatically selected. |
+| `progress_steps` | array | `null` | Dynamic configuration changes based on percentage thresholds. Array of objects with `from` (percentage 0-100) and conditional properties: `progress_color`, `background_color`, `text_color`, `stroke_width`. Example: `[{from: 0, progress_color: "#00ff00", stroke_width: 10}, {from: 75, progress_color: "#ff0000", background_color: "#300", text_color: "#fff", stroke_width: 20}]`. Properties override corresponding base config when threshold is reached. Order doesn't matter - highest applicable threshold is automatically selected. |
 | `icon_size` | string | `"100px"` | Progress circle size. Auto-scales by default. |
 | `stroke_width` | number | `15` | Thickness of progress circle stroke. |
 | `card_mod` | object | `null` | Advanced styling via [card-mod](https://github.com/thomasloven/lovelace-card-mod) integration. |
@@ -489,17 +489,21 @@ progress_steps:
   - from: 0
     progress_color: "#00ff00"      # Green progress (0-50%)
     background_color: "#0a1a0a"    # Dark green background
+    stroke_width: 10                 # Thin stroke in early stage
   - from: 50
     progress_color: "#ffff00"      # Yellow progress (50-75%)
     background_color: "#1a1a0a"    # Dark yellow background
+    stroke_width: 15                 # Medium stroke
   - from: 75
     progress_color: "#ff9900"      # Orange progress (75-90%)
     background_color: "#1a0f05"    # Dark orange background
     text_color: "#fff"             # White text for contrast
+    stroke_width: 18                 # Thicker stroke for urgency
   - from: 90
     progress_color: "#ff0000"      # Red progress (90-100%)
     background_color: "#2a0505"    # Dark red background
     text_color: "#ffcccc"          # Light red text
+    stroke_width: 22                 # Bold stroke at critical level
     # CSS variables work too: var(--error-color)
 show_days: true
 show_hours: true
@@ -510,17 +514,18 @@ expired_text: "Deadline passed!"
 ```
 
 **How it works:**
-- Progress 0-49%: Green theme with dark green background
-- Progress 50-74%: Yellow theme with dark yellow background  
-- Progress 75-89%: Orange theme with dark orange background + white text
-- Progress 90-100%: Red theme with dark red background + light red text
+- Progress 0-49%: Green theme with dark green background + thin stroke (10)
+- Progress 50-74%: Yellow theme with dark yellow background + medium stroke (15)
+- Progress 75-89%: Orange theme with dark orange background + white text + thicker stroke (18)
+- Progress 90-100%: Red theme with dark red background + light red text + bold stroke (22)
 - Order of array items doesn't matter - highest matching threshold wins
-- Complete visual transformation without checking numbers
+- Complete visual transformation including stroke weight for urgency emphasis
 
 **Supported properties in each step:**
 - `progress_color` - Circle/progress bar color
 - `background_color` - Card background color
 - `text_color` - Title, subtitle, and all text colors
+- `stroke_width` - Progress circle stroke thickness (visual emphasis)
 
 **Use cases:**
 - 🎯 **Project deadlines** - Entire card shifts from calm to urgent as deadline approaches

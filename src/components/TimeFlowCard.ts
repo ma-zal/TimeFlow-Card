@@ -429,6 +429,7 @@ export class TimeFlowCard extends LitElement {
     let cardBackground = background_color || 'var(--card-background, var(--primary-background-color, #1a1a1a))';
     let textColor = text_color || 'var(--primary-text-color, #fff)';
     let mainProgressColor = progress_color || text_color || 'var(--progress-color, #4caf50)';
+    let effectiveStrokeWidth = stroke_width;
 
     // Apply conditional progress steps if configured
     if (Array.isArray(progress_steps)) {
@@ -446,11 +447,14 @@ export class TimeFlowCard extends LitElement {
       if (matchingStep?.text_color) {
         textColor = matchingStep.text_color;
       }
+      if (matchingStep?.stroke_width !== undefined) {
+        effectiveStrokeWidth = matchingStep.stroke_width;
+      }
     }
 
     // Calculate dynamic circle size based on card dimensions to prevent overflow
     const dynamicCircleSize = this.styleManager.calculateDynamicIconSize(width, height, aspect_ratio, icon_size);
-    const dynamicStroke = this.styleManager.calculateDynamicStrokeWidth(dynamicCircleSize, stroke_width);
+    const dynamicStroke = this.styleManager.calculateDynamicStrokeWidth(dynamicCircleSize, effectiveStrokeWidth);
 
     // Calculate proportional text sizes
     const proportionalSizes = this.styleManager.calculateProportionalSizes(width, height, aspect_ratio);
