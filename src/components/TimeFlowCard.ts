@@ -415,10 +415,8 @@ export class TimeFlowCard extends LitElement {
        * ```
        */
       progress_steps,
-      stroke_width,
       icon_size,
       expired_animation = true,
-      expired_text = 'Completed! 🎉',
       width,
       height,
       aspect_ratio,
@@ -429,7 +427,8 @@ export class TimeFlowCard extends LitElement {
     let cardBackground = background_color || 'var(--card-background, var(--primary-background-color, #1a1a1a))';
     let textColor = text_color || 'var(--primary-text-color, #fff)';
     let mainProgressColor = progress_color || text_color || 'var(--progress-color, #4caf50)';
-    let effectiveStrokeWidth = stroke_width;
+    let stroke_width = this._resolvedConfig.stroke_width;
+    let expired_text = this._resolvedConfig.expired_text || 'Completed! 🎉';
 
     // Apply conditional progress steps if configured
     if (Array.isArray(progress_steps)) {
@@ -448,13 +447,16 @@ export class TimeFlowCard extends LitElement {
         textColor = matchingStep.text_color;
       }
       if (matchingStep?.stroke_width !== undefined) {
-        effectiveStrokeWidth = matchingStep.stroke_width;
+        stroke_width = matchingStep.stroke_width;
+      }
+      if (matchingStep?.expired_text) {
+        expired_text = matchingStep.expired_text;
       }
     }
 
     // Calculate dynamic circle size based on card dimensions to prevent overflow
     const dynamicCircleSize = this.styleManager.calculateDynamicIconSize(width, height, aspect_ratio, icon_size);
-    const dynamicStroke = this.styleManager.calculateDynamicStrokeWidth(dynamicCircleSize, effectiveStrokeWidth);
+    const dynamicStroke = this.styleManager.calculateDynamicStrokeWidth(dynamicCircleSize, stroke_width);
 
     // Calculate proportional text sizes
     const proportionalSizes = this.styleManager.calculateProportionalSizes(width, height, aspect_ratio);

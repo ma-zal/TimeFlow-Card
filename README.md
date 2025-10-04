@@ -56,7 +56,7 @@ This card offers a wide range of options to customize its appearance and behavio
 | `color` | string | `"#FCFCFC"` | Primary text color. Supports templates. |
 | `background_color` | string | `"#000001"` | Card background color. Supports templates. |
 | `progress_color` | string | `"#C366CD"` | Progress bar color. Supports templates. |
-| `progress_steps` | array | `null` | Dynamic configuration changes based on percentage thresholds. Array of objects with `from` (percentage 0-100) and conditional properties: `progress_color`, `background_color`, `text_color`, `stroke_width`. Example: `[{from: 0, progress_color: "#00ff00", stroke_width: 10}, {from: 75, progress_color: "#ff0000", background_color: "#300", text_color: "#fff", stroke_width: 20}]`. Properties override corresponding base config when threshold is reached. Order doesn't matter - highest applicable threshold is automatically selected. |
+| `progress_steps` | array | `null` | Dynamic configuration changes based on percentage thresholds. Array of objects with `from` (percentage 0-100) and conditional properties: `progress_color`, `background_color`, `text_color`, `stroke_width`, `expired_text`. Example: `[{from: 0, progress_color: "#00ff00", stroke_width: 10}, {from: 90, progress_color: "#ff0000", background_color: "#300", text_color: "#fff", stroke_width: 20, expired_text: "CRITICAL!"}]`. Properties override corresponding base config when threshold is reached. Order doesn't matter - highest applicable threshold is automatically selected. |
 | `icon_size` | string | `"100px"` | Progress circle size. Auto-scales by default. |
 | `stroke_width` | number | `15` | Thickness of progress circle stroke. |
 | `card_mod` | object | `null` | Advanced styling via [card-mod](https://github.com/thomasloven/lovelace-card-mod) integration. |
@@ -526,6 +526,7 @@ expired_text: "Deadline passed!"
 - `background_color` - Card background color
 - `text_color` - Title, subtitle, and all text colors
 - `stroke_width` - Progress circle stroke thickness (visual emphasis)
+- `expired_text` - Custom completion message (shown when countdown finishes)
 
 **Use cases:**
 - 🎯 **Project deadlines** - Entire card shifts from calm to urgent as deadline approaches

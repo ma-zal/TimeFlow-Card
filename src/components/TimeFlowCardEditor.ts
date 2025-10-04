@@ -36,7 +36,7 @@ export class TimeFlowCardEditor extends LitElement {
             'creation_date': 'Examples: "2024-01-01T00:00:00", "{{ now() }}", "{{ states(\'input_datetime.start\') }}"',
             'target_date': 'Examples: "2024-12-31T23:59:59", "{{ states(\'input_datetime.deadline\') }}"',
             'progress_color': 'Examples: "#FF0000", "red", "rgb(255,0,0)", "{{ states(\'input_text.color\') }}"',
-            'progress_steps': 'Dynamic configuration changes based on percentage thresholds. Define in YAML mode as array of objects. Supported properties: progress_color, background_color, text_color, stroke_width. Example: [{from: 0, progress_color: "#00ff00", stroke_width: 10}, {from: 75, progress_color: "#ff0000", background_color: "#300", text_color: "#fff", stroke_width: 20}]. Properties override corresponding base config when threshold is reached.',
+            'progress_steps': 'Dynamic configuration changes based on percentage thresholds. Define in YAML mode as array of objects. Supported properties: progress_color, background_color, text_color, stroke_width, expired_text. Example: [{from: 0, progress_color: "#00ff00", stroke_width: 10}, {from: 90, progress_color: "#ff0000", background_color: "#300", text_color: "#fff", stroke_width: 20, expired_text: "URGENT!"}]. Properties override corresponding base config when threshold is reached.',
             'background_color': 'Examples: "#00FF00", "blue", "rgba(0,255,0,0.5)", "{{ \'red\' if is_state(\'switch.alert\', \'on\') else \'green\' }}"',
             'color': 'Examples: "#333333", "white", "rgb(0,0,0)", "{{ states(\'input_text.color\') }}"',
             'text_color': 'Examples: "#333333", "white", "rgb(0,0,0)", "{{ states(\'input_text.color\') }}"',

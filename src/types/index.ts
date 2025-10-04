@@ -57,6 +57,7 @@ export interface ProgressStepConfig {
   background_color?: string; // Background color to use when progress >= from
   text_color?: string; // Text color to use when progress >= from
   stroke_width?: number; // Progress circle stroke width to use when progress >= from
+  expired_text?: string; // Custom expired text to use when progress >= from
 }
 
 export interface CardConfig {
