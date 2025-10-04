@@ -402,6 +402,19 @@ export class TimeFlowCard extends LitElement {
       text_color,
       background_color,
       progress_color,
+      /**
+       * Format: [ { from: "<at_least_percent_number>", color: "overridden_color_value" } ]
+       * 
+       * Example:
+       * ```yaml
+       * progress_colors:
+       *   - from: 50
+       *     color: "#ff0000"
+       *   - from: 75
+       *     color: "#00ff00"
+       * ```
+       */
+      progress_colors,
       stroke_width,
       icon_size,
       expired_animation = true,
@@ -415,7 +428,16 @@ export class TimeFlowCard extends LitElement {
     // FIXED: Ensure background color has a sensible default
     const cardBackground = background_color || 'var(--card-background, var(--primary-background-color, #1a1a1a))';
     const textColor = text_color || 'var(--primary-text-color, #fff)';
-    const mainProgressColor = progress_color || text_color || 'var(--progress-color, #4caf50)';
+    let mainProgressColor = progress_color || text_color || 'var(--progress-color, #4caf50)';
+
+    // Handle progress colors array for dynamic coloring based on progress
+    if (Array.isArray(progress_colors)) {
+      const currentProgress = this._progress;
+      const matchingColor = progress_colors.find(color => currentProgress >= color.from);
+      if (matchingColor) {
+        mainProgressColor = matchingColor.color;
+      }
+    }
 
     // Calculate dynamic circle size based on card dimensions to prevent overflow
     const dynamicCircleSize = this.styleManager.calculateDynamicIconSize(width, height, aspect_ratio, icon_size);

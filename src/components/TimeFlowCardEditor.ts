@@ -39,6 +39,7 @@ export class TimeFlowCardEditor extends LitElement {
             'target_date_offset': 'Offset in seconds to adjust the "target_date". Positive values move the target into the future, negative values into the past. Examples: 300 (adds 5 minutes), -60 (subtracts 1 minute).',
             'progress_offset': 'Number of seconds to offset the progress circle. Does not affect the countdown text. Examples: 60 (for 1 minute), -300 (for 5 minutes earlier)',
             'progress_color': 'Examples: "#FF0000", "red", "rgb(255,0,0)", "{{ states(\'input_text.color\') }}"',
+            'progress_colors': 'Dynamic progress colors based on percentage thresholds. Define in YAML mode as array: [{from: 0, color: "#00ff00"}, {from: 50, color: "#ffff00"}, {from: 75, color: "#ff0000"}]. Overrides "progress_color" when set and matches with the actual percentage.',
             'background_color': 'Examples: "#00FF00", "blue", "rgba(0,255,0,0.5)", "{{ \'red\' if is_state(\'switch.alert\', \'on\') else \'green\' }}"',
             'color': 'Examples: "#333333", "white", "rgb(0,0,0)", "{{ states(\'input_text.color\') }}"',
             'text_color': 'Examples: "#333333", "white", "rgb(0,0,0)", "{{ states(\'input_text.color\') }}"',

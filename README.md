@@ -59,6 +59,7 @@ This card offers a wide range of options to customize its appearance and behavio
 | `color` | string | `"#FCFCFC"` | Primary text color. Supports templates. |
 | `background_color` | string | `"#000001"` | Card background color. Supports templates. |
 | `progress_color` | string | `"#C366CD"` | Progress bar color. Supports templates. |
+| `progress_colors` | array | `null` | Dynamic progress colors based on percentage thresholds. Array of objects with `from` (percentage 0-100) and `color` properties. Example: `[{from: 0, color: "#00ff00"}, {from: 50, color: "#ffff00"}, {from: 75, color: "var(--error-color)"}]`. Overrides `progress_color` when defined and matches with the actual percentage. |
 | `icon_size` | string | `"100px"` | Progress circle size. Auto-scales by default. |
 | `stroke_width` | number | `15` | Thickness of progress circle stroke. |
 | `card_mod` | object | `null` | Advanced styling via [card-mod](https://github.com/thomasloven/lovelace-card-mod) integration. |
@@ -508,7 +509,58 @@ columns: 2
 ```
 </details>
 
-----
+-----
+
+### 🎨 Dynamic Progress Colors
+
+![progress-colors](assets/thumbnail.png)
+
+Automatically change the progress circle color based on completion percentage. Perfect for visual alerts as time runs out.
+
+<details>
+<summary>View YAML</summary>
+
+```yaml
+type: custom:timeflow-card
+title: "Project Deadline"
+target_date: "2025-10-31T17:00:00"
+creation_date: "2025-10-01T09:00:00"
+background_color: "#1a1a1a"
+color: "#FFFFFF"
+progress_colors:
+  - from: 0
+    color: "#00ff00"  # Green (0-50%)
+  - from: 50
+    color: "#ffff00"  # Yellow (50-75%)
+  - from: 75
+    color: "#ff9900"  # Orange (75-90%)
+  - from: 90
+    color: "#ff0000"  # Red (90-100%)
+    # alternatively, CSS variables can be used, e.g. `var(--error-color)`
+show_days: true
+show_hours: true
+show_minutes: false
+show_seconds: false
+stroke_width: 12
+expired_text: "Deadline passed!"
+```
+
+**How it works:**
+- Progress starts green (0-49%)
+- Turns yellow as you pass 50%
+- Changes to orange at 75%
+- Becomes red warning at 90%
+- Visual feedback without checking the numbers
+
+**Use cases:**
+- 🎯 **Project deadlines** - Green → Yellow → Red as deadline approaches
+- 🔋 **Battery monitoring** - Color changes as battery depletes
+- ⏰ **Meeting reminders** - Visual urgency indicator
+- 🍳 **Cooking timers** - Safe → Warning → Critical zones
+
+</details>
+
+-----
 
 ## Styling 
 
