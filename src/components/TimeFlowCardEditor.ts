@@ -77,7 +77,6 @@ export class TimeFlowCardEditor extends LitElement {
             { name: 'target_date', required: false, selector: { text: {} } },
             { name: "target_date_offset", required: false, selector: { number: {} } },
             { name: 'timer_entity', required: false, selector: { entity: { domain: 'timer' } } },
-            { name: 'progress_offset', required: false, selector: { number: {} } },
             {
                 type: "expandable",
                 title: "Appearance",
@@ -129,6 +128,7 @@ export class TimeFlowCardEditor extends LitElement {
                         ]
                     },
                     { name: 'show_progress_text', required: false, selector: { boolean: {} } },
+                    { name: 'progress_offset', required: false, selector: { number: {} } },
                 ]
             }
         ];
