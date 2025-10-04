@@ -400,18 +400,21 @@ export class TimeFlowCard extends LitElement {
       background_color,
       progress_color,
       /**
-       * Format: [ { from: "<at_least_percent_number>", color: "overridden_color_value" } ]
+       * Conditional configuration steps based on progress percentage.
+       * Array order doesn't matter - highest applicable threshold is automatically selected.
+       * 
+       * Format: [ { from: "<threshold_percent>", progress_color: "overriden_color_value", ... } ]
        * 
        * Example:
        * ```yaml
-       * progress_colors:
+       * progress_steps:
        *   - from: 50
-       *     color: "#ff0000"
+       *     progress_color: "#ffff00"
        *   - from: 75
-       *     color: "#00ff00"
+       *     progress_color: "#ff0000"
        * ```
        */
-      progress_colors,
+      progress_steps,
       stroke_width,
       icon_size,
       expired_animation = true,
@@ -423,16 +426,25 @@ export class TimeFlowCard extends LitElement {
     } = this._resolvedConfig;
 
     // FIXED: Ensure background color has a sensible default
-    const cardBackground = background_color || 'var(--card-background, var(--primary-background-color, #1a1a1a))';
-    const textColor = text_color || 'var(--primary-text-color, #fff)';
+    let cardBackground = background_color || 'var(--card-background, var(--primary-background-color, #1a1a1a))';
+    let textColor = text_color || 'var(--primary-text-color, #fff)';
     let mainProgressColor = progress_color || text_color || 'var(--progress-color, #4caf50)';
 
-    // Handle progress colors array for dynamic coloring based on progress
-    if (Array.isArray(progress_colors)) {
+    // Apply conditional progress steps if configured
+    if (Array.isArray(progress_steps)) {
       const currentProgress = this._progress;
-      const matchingColor = progress_colors.find(color => currentProgress >= color.from);
-      if (matchingColor) {
-        mainProgressColor = matchingColor.color;
+      // Sort steps by 'from' descending to find the highest applicable threshold
+      const sortedSteps = [...progress_steps].sort((a, b) => b.from - a.from);
+      // Find the first step where currentProgress >= from (highest applicable threshold)
+      const matchingStep = sortedSteps.find(step => currentProgress >= step.from);
+      if (matchingStep?.progress_color) {
+        mainProgressColor = matchingStep.progress_color;
+      }
+      if (matchingStep?.background_color) {
+        cardBackground = matchingStep.background_color
+      }
+      if (matchingStep?.text_color) {
+        textColor = matchingStep.text_color;
       }
     }
 
