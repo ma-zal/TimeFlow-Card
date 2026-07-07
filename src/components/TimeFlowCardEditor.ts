@@ -187,6 +187,7 @@ export class TimeFlowCardEditor extends LitElement {
 
             // Colors
             'progress_color': 'Progress circle color (hex, name, rgb, or template)',
+            'progress_steps': 'Dynamic configuration changes based on percentage thresholds. Define in YAML mode as array of objects. Supported properties: progress_color, background_color, text_color, stroke_width, expired_text. Example: [{from: 0, progress_color: "#00ff00", stroke_width: 10}, {from: 90, progress_color: "#ff0000", background_color: "#300", text_color: "#fff", stroke_width: 20, expired_text: "URGENT!"}]. Properties override corresponding base config when threshold is reached.',
             'background_color': 'Card background color',
             'text_color': 'Text color for title and countdown',
 

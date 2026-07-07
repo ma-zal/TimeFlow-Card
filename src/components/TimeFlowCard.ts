@@ -732,7 +732,22 @@ export class TimeFlowCard extends LitElement {
       text_color,
       background_color,
       progress_color,
-      stroke_width,
+      /**
+       * Conditional configuration steps based on progress percentage.
+       * Array order doesn't matter - highest applicable threshold is automatically selected.
+       * 
+       * Format: [ { from: "<threshold_percent>", progress_color: "overriden_color_value", ... } ]
+       * 
+       * Example:
+       * ```yaml
+       * progress_steps:
+       *   - from: 50
+       *     progress_color: "#ffff00"
+       *   - from: 75
+       *     progress_color: "#ff0000"
+       * ```
+       */
+      progress_steps,
       icon_size,
       expired_animation = true,
       expired_text = '',
@@ -754,8 +769,36 @@ export class TimeFlowCard extends LitElement {
     const useCompact = compact_format === true || (compact_format !== false && enabledUnits >= 3);
 
     // Get card colors using helper
-    const { cardBackground, textColor } = this._getCardColors();
-    const mainProgressColor = progress_color || text_color || 'var(--progress-color, #4caf50)';
+    const cardColors = this._getCardColors();
+    let cardBackground = cardColors.cardBackground;
+    let textColor = cardColors.textColor;
+    let mainProgressColor = progress_color || text_color || 'var(--progress-color, #4caf50)';
+    let stroke_width = this._resolvedConfig.stroke_width;
+    let effectiveExpiredText = expired_text;
+
+    // Apply conditional progress steps if configured
+    if (Array.isArray(progress_steps)) {
+      const currentProgress = this._progress;
+      // Sort steps by 'from' descending to find the highest applicable threshold
+      const sortedSteps = [...progress_steps].sort((a, b) => b.from - a.from);
+      // Find the first step where currentProgress >= from (highest applicable threshold)
+      const matchingStep = sortedSteps.find(step => currentProgress >= step.from);
+      if (matchingStep?.progress_color) {
+        mainProgressColor = matchingStep.progress_color;
+      }
+      if (matchingStep?.background_color) {
+        cardBackground = matchingStep.background_color;
+      }
+      if (matchingStep?.text_color) {
+        textColor = matchingStep.text_color;
+      }
+      if (matchingStep?.stroke_width !== undefined) {
+        stroke_width = matchingStep.stroke_width;
+      }
+      if (matchingStep?.expired_text) {
+        effectiveExpiredText = matchingStep.expired_text;
+      }
+    }
 
     // Calculate dynamic circle size based on card dimensions to prevent overflow
     const dynamicCircleSize = this.styleManager.calculateDynamicIconSize(width, height, aspect_ratio, icon_size);
@@ -805,17 +848,17 @@ export class TimeFlowCard extends LitElement {
             timeFormatCompact
           );
         } else {
-          subtitleText = expired_text || this.countdownService.getSubtitle(this._resolvedConfig, this.hass, this._localize || undefined, timeFormatCompact);
+          subtitleText = effectiveExpiredText || this.countdownService.getSubtitle(this._resolvedConfig, this.hass, this._localize || undefined, timeFormatCompact);
         }
       } else {
-        subtitleText = this._expired ? (expired_text || this.countdownService.getSubtitle(this._resolvedConfig, this.hass, this._localize || undefined, timeFormatCompact)) : (subtitle || this.countdownService.getSubtitle(this._resolvedConfig, this.hass, this._localize || undefined, timeFormatCompact));
+        subtitleText = this._expired ? (effectiveExpiredText || this.countdownService.getSubtitle(this._resolvedConfig, this.hass, this._localize || undefined, timeFormatCompact)) : (subtitle || this.countdownService.getSubtitle(this._resolvedConfig, this.hass, this._localize || undefined, timeFormatCompact));
       }
     } else {
       // In auto-discovery, always defer to service subtitle (handles Alexa finished/none states)
       if (this._resolvedConfig.auto_discover_alexa) {
         subtitleText = subtitle || this.countdownService.getSubtitle(this._resolvedConfig, this.hass, this._localize || undefined, timeFormatCompact);
       } else {
-        subtitleText = this._expired ? (expired_text || this.countdownService.getSubtitle(this._resolvedConfig, this.hass, this._localize || undefined, timeFormatCompact)) : (subtitle || this.countdownService.getSubtitle(this._resolvedConfig, this.hass, this._localize || undefined, timeFormatCompact));
+        subtitleText = this._expired ? (effectiveExpiredText || this.countdownService.getSubtitle(this._resolvedConfig, this.hass, this._localize || undefined, timeFormatCompact)) : (subtitle || this.countdownService.getSubtitle(this._resolvedConfig, this.hass, this._localize || undefined, timeFormatCompact));
       }
     }
 
