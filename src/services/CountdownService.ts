@@ -435,13 +435,17 @@ export class CountdownService {
     let elapsed = now - creationDate;
 
     // Apply progress_offset
-    if (config.progress_offset && typeof config.progress_offset === 'number') {
-      elapsed -= config.progress_offset * 1000;
+    // Note: numeric config fields can arrive as strings (e.g. from the HA number selector),
+    // so coerce rather than requiring a strict `number` type.
+    const progressOffsetSeconds = Number(config.progress_offset);
+    const hasProgressOffset = config.progress_offset !== undefined && config.progress_offset !== null && !isNaN(progressOffsetSeconds);
+    if (hasProgressOffset) {
+      elapsed -= progressOffsetSeconds * 1000;
     }
 
     const progress = Math.min(100, Math.max(0, (elapsed / totalDuration) * 100));
 
-    return (this.expired && !config.progress_offset) ? 100 : progress;
+    return (this.expired && !hasProgressOffset) ? 100 : progress;
   }
 
   getPrimaryDisplayUnit(config: CardConfig): { value: number; unit: 'year' | 'month' | 'week' | 'day' | 'hour' | 'minute' | 'second' } {
