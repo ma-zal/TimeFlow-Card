@@ -201,6 +201,7 @@ export class TimeFlowCardEditor extends LitElement {
             'progress_bg_stroke': 'Background circle stroke color (e.g., "#515751", "rgba(81, 87, 81, 0.2)")',
             'progress_bg_opacity': 'Background circle opacity as percentage (0-100)',
             'invert_progress': 'Start the progress circle full and subtract from it instead of filling it up',
+            'progress_offset': 'Number of seconds to offset the progress circle only (does not affect the countdown text). Examples: 60 (1 minute late), -300 (5 minutes early)',
 
             // Header Icon
             'header_icon': 'Material Design icon name (e.g., "mdi:cake-variant")',
@@ -514,6 +515,7 @@ export class TimeFlowCardEditor extends LitElement {
                     { name: 'progress_bg_stroke', selector: { text: {} } },
                     { name: 'progress_bg_opacity', selector: { number: { min: 0, max: 100, step: 5 } } },
                     { name: 'invert_progress', selector: { boolean: {} } },
+                    { name: 'progress_offset', required: false, selector: { number: {} } },
                 ]
             },
 

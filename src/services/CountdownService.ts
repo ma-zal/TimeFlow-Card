@@ -449,13 +449,21 @@ export class CountdownService {
       creationDate = now; // Fallback to now if somehow no creation date
     }
 
+    // Total progress duration in milliseconds
     const totalDuration = targetDate - creationDate;
     if (totalDuration <= 0) return 100;
 
-    const elapsed = now - creationDate;
+    // Elapsed progress in milliseconds
+    let elapsed = now - creationDate;
+
+    // Apply progress_offset
+    if (config.progress_offset && typeof config.progress_offset === 'number') {
+      elapsed -= config.progress_offset * 1000;
+    }
+
     const progress = Math.min(100, Math.max(0, (elapsed / totalDuration) * 100));
 
-    return this.expired ? 100 : progress;
+    return (this.expired && !config.progress_offset) ? 100 : progress;
   }
 
   getPrimaryDisplayUnit(config: CardConfig): { value: number; unit: 'year' | 'month' | 'week' | 'day' | 'hour' | 'minute' | 'second' } {

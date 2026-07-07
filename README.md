@@ -50,6 +50,7 @@ If `timer_entity` or smart-timer auto-discovery is used, timer data takes priori
 | `target_date_offset` | number | `null` | The number of seconds to offset the `target_date`. Positive value moves the date forward to the future, negative value moves it backward. Example: 300 (adds 5 minutes), -60 (subtracts 1 minute). |
 | `creation_date` | string | `null` | Optional start date for count-down progress calculations. Supports ISO strings, entity IDs, and templates. |
 | `creation_relative` | number | `null` | The number of seconds before the `target_date` that the progress circle should start. Use this relative value as an alternative to specifying a fixed `creation_date`. |
+| `progress_offset` | number | `null` | Number of seconds to offset the progress circle only (does not affect the countdown text). Positive values delay the progress, negative values move it ahead. Examples: `300` (5 min late), `-60` (1 min early). |
 | `count_up_goal_date` | string | `null` | Optional goal/end date for count-up progress. Supports ISO strings, entity IDs, and templates. |
 | `count_up_cycle` | string / number | `null` | Optional repeating count-up cycle such as `30d`, `12h`, `24:00:00`, or raw seconds. Supports templates. |
 | `timer_entity` | string | `null` | Home Assistant `timer`, `sensor`, or `input_datetime` entity. Overrides date-based display logic. |
@@ -486,6 +487,45 @@ card_mod:
     }
 
 ```
+</details>
+
+-----
+
+### 🍕 Pizza Timer with Safety Buffer
+
+![pizza](assets/thumbnail.png)
+
+A practical timer that uses `progress_offset` to complete the progress circle 2 minutes before the actual timer ends, giving you time to prepare and get the pizza out safely.
+
+<details>
+<summary>View YAML</summary>
+
+```yaml
+type: custom:timeflow-card
+title: "🍕 Pizza in Oven"
+target_date: "{{ now() + timedelta(minutes=15) }}"
+creation_date: "{{ now() }}"  # 15 minutes total
+progress_offset: 120    # Progress completes 2 min early
+progress_color: "#FF6B35"
+background_color: "#1a1a1a"
+text_color: "#FFFFFF"
+expired_text: "Pizza is ready! 🍕"
+show_hours: false
+show_minutes: true
+show_seconds: true
+stroke_width: 12
+card_mod:
+  style: |
+    ha-card .title {
+      font-size: 2rem;
+    }
+```
+
+**How it works:**
+- Countdown text shows the actual time remaining (15:00 → 00:00)
+- Progress circle reaches 100% at 02:00 (2 minutes before timer ends)
+- Gives you a visual heads-up to prepare before the pizza is done
+
 </details>
 
 -----
