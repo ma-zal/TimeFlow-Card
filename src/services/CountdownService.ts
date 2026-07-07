@@ -331,11 +331,11 @@ export class CountdownService {
       let targetDate = this.dateParser.parseISODate(targetDateValue);
 
       // Apply target_date_offset if specified
-      if (
-        config.target_date_offset &&
-        typeof config.target_date_offset === "number"
-      ) {
-        targetDate += config.target_date_offset * 1000; // Convert seconds to milliseconds
+      // Note: numeric config fields can arrive as strings (e.g. from the HA number selector),
+      // so coerce rather than requiring a strict `number` type.
+      const targetDateOffsetSeconds = Number(config.target_date_offset);
+      if (config.target_date_offset !== undefined && config.target_date_offset !== null && !isNaN(targetDateOffsetSeconds)) {
+        targetDate += targetDateOffsetSeconds * 1000; // Convert seconds to milliseconds
       }
 
       if (isNaN(targetDate)) {
@@ -392,13 +392,13 @@ export class CountdownService {
     let targetDate = this.dateParser.parseISODate(targetDateValue);
 
     // Apply target_date_offset if specified
-    if (
-      config.target_date_offset &&
-      typeof config.target_date_offset === "number"
-    ) {
-      targetDate += config.target_date_offset * 1000; // Convert seconds to milliseconds
+    // Note: numeric config fields can arrive as strings (e.g. from the HA number selector),
+    // so coerce rather than requiring a strict `number` type.
+    const targetDateOffsetSeconds = Number(config.target_date_offset);
+    if (config.target_date_offset !== undefined && config.target_date_offset !== null && !isNaN(targetDateOffsetSeconds)) {
+      targetDate += targetDateOffsetSeconds * 1000; // Convert seconds to milliseconds
     }
-    
+
     const now = Date.now();
 
     if (mode === 'count_up') {
