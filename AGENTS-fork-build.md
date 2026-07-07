@@ -19,7 +19,7 @@ Postup buildu:
     - Resit pripadne konflikty.
     - Poznamka: Pouze merges, zadne rebase.
     - Push aktualizovane feature branch zpet na origin.
-3. Vytvor branch 'fork-build' z aktualniho stavu 'main'. Pokud uz existuje (lokalne nebo na originu), smaz ji a zacni znovu.
+3. Vytvor branch 'fork-build-<date YYMMDD>' z aktualniho stavu 'main'. Pokud uz existuje (lokalne nebo na originu), smaz ji a zacni znovu.
 4. Pro kazdou feature branch (v poradi jako v seznamu vyse):
     - Provest merge z feature branch do 'fork-build'.
     - Resit pripadne konflikty - ale nemeli by nastat
