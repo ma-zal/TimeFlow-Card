@@ -798,6 +798,15 @@ export class TimeFlowCard extends LitElement {
       if (matchingStep?.expired_text) {
         effectiveExpiredText = matchingStep.expired_text;
       }
+
+      if (this._resolvedConfig.debug) {
+        console.debug('[TimeFlow] progress_steps match', {
+          currentProgress,
+          matchingStep,
+          mainProgressColor,
+          stroke_width
+        });
+      }
     }
 
     // Calculate dynamic circle size based on card dimensions to prevent overflow

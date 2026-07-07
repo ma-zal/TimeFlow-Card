@@ -469,8 +469,25 @@ export class CountdownService {
     }
 
     const progress = Math.min(100, Math.max(0, (elapsed / totalDuration) * 100));
+    const result = (this.expired && !hasProgressOffset) ? 100 : progress;
 
-    return (this.expired && !hasProgressOffset) ? 100 : progress;
+    if (config.debug) {
+      console.debug('[TimeFlow] calculateProgress', {
+        targetDateRaw: targetDateValue,
+        targetDateAdjustedMs: targetDate,
+        targetDateAdjustedIso: new Date(targetDate).toISOString(),
+        creationDateMs: creationDate,
+        creationDateIso: new Date(creationDate).toISOString(),
+        nowIso: new Date(now).toISOString(),
+        totalDurationSeconds: totalDuration / 1000,
+        elapsedSeconds: elapsed / 1000,
+        rawProgressPercent: progress,
+        expired: this.expired,
+        resultPercent: result
+      });
+    }
+
+    return result;
   }
 
   getPrimaryDisplayUnit(config: CardConfig): { value: number; unit: 'year' | 'month' | 'week' | 'day' | 'hour' | 'minute' | 'second' } {
