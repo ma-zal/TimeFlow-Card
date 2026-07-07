@@ -167,12 +167,12 @@ export class ConfigValidator {
     }
     
     // Validate stroke_width
-    if (config.stroke_width !== undefined && !this.isValidNumberInput(config.stroke_width, 1, 50)) {
+    if (config.stroke_width !== undefined && !this.isValidNumberInput(config.stroke_width, 0, 50)) {
       errors.push({
         field: 'stroke_width',
         message: 'Invalid stroke_width value',
         severity: 'warning',
-        suggestion: 'Must be a number between 1 and 50.',
+        suggestion: 'Must be a number between 0 and 50.',
         value: config.stroke_width
       });
     }
