@@ -47,6 +47,7 @@ If `timer_entity` or smart-timer auto-discovery is used, timer data takes priori
 | `style` | string | `classic` | Card layout: `classic`, `eventy`, or `classic-compact`. |
 | `mode` | string | `count_down` | Time mode: `count_down` or `count_up`. |
 | `target_date` | string | `null` | Main date field. In count-down mode this is the target date. In count-up mode this is the start date. Supports ISO strings, entity IDs, and templates. |
+| `target_date_offset` | number | `null` | The number of seconds to offset the `target_date`. Positive value moves the date forward to the future, negative value moves it backward. Example: 300 (adds 5 minutes), -60 (subtracts 1 minute). |
 | `creation_date` | string | `null` | Optional start date for count-down progress calculations. Supports ISO strings, entity IDs, and templates. |
 | `creation_relative` | number | `null` | The number of seconds before the `target_date` that the progress circle should start. Use this relative value as an alternative to specifying a fixed `creation_date`. |
 | `count_up_goal_date` | string | `null` | Optional goal/end date for count-up progress. Supports ISO strings, entity IDs, and templates. |

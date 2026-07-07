@@ -481,6 +481,7 @@ export class TimeFlowCard extends LitElement {
       type: 'custom:timeflow-card',
       mode: 'count_down',
       target_date: '2026-12-31T23:59:59',
+      target_date_offset: undefined,
       creation_date: '2025-12-31T23:59:59',
       creation_relative: undefined,
       timer_entity: '',
@@ -1185,6 +1186,12 @@ export class TimeFlowCard extends LitElement {
     try {
       const date = new Date(targetDate);
       if (isNaN(date.getTime())) return '';
+
+      // Apply target_date_offset if specified, so the displayed date matches the countdown target
+      const offsetSeconds = this._resolvedConfig.target_date_offset;
+      if (typeof offsetSeconds === 'number') {
+        date.setTime(date.getTime() + offsetSeconds * 1000);
+      }
 
       // Get user's locale from Home Assistant or browser
       const locale = this.hass?.locale?.language || navigator.language || 'en';

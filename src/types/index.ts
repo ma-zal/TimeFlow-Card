@@ -112,6 +112,7 @@ export interface CardConfig {
 
   // Basic countdown configuration
   target_date?: string;          // Count down: target/end date. Count up: start/since date.
+  target_date_offset?: number;   // Optional offset (in seconds) applied to target_date
   creation_date?: string;        // Optional progress start date for count-down mode
   creation_relative?: number;    // Optional: seconds before target_date that progress should start (alternative to creation_date)
   count_up_goal_date?: string;   // Optional goal/end date for count-up progress

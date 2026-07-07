@@ -167,6 +167,7 @@ export class TimeFlowCardEditor extends LitElement {
             'timer_entity': 'Select a timer, sensor, or input_datetime entity',
             'mode': 'Choose whether the card counts down to a date or counts up from a date',
             'target_date': 'ISO date, entity, or template: "2024-12-31T23:59:59", "{{ states(\'input_datetime.deadline\') }}"',
+            'target_date_offset': 'Offset in seconds to adjust the "target_date". Positive values move the target into the future, negative values into the past. Examples: 300 (adds 5 minutes), -60 (subtracts 1 minute).',
             'creation_date': 'Start date for countdown progress calculation (optional)',
             'creation_relative': 'The number of seconds before the `target_date` that the progress circle should start. Use this relative value as an alternative to specifying a fixed `creation_date`. Examples: 60 (for 1 minute), 3600 (for 1 hour).',
             'count_up_goal_date': 'Optional goal/end date for count-up circle progress',
@@ -220,6 +221,7 @@ export class TimeFlowCardEditor extends LitElement {
             'timer_entity': 'Timer Entity',
             'mode': 'Mode',
             'target_date': 'Target Date/Time',
+            'target_date_offset': 'Target Date Offset (seconds)',
             'creation_date': 'Start Date (for progress)',
             'creation_relative': 'Relative Start (seconds before target)',
             'count_up_goal_date': 'Goal Date',
@@ -364,22 +366,22 @@ export class TimeFlowCardEditor extends LitElement {
             // ═══════════════════════════════════════════════════════════
             // CARD STYLE - Choose card appearance
             // ═══════════════════════════════════════════════════════════════════════════════
-            { 
-                name: 'mode', 
-                selector: { 
-                    select: { 
+            {
+                name: 'mode',
+                selector: {
+                    select: {
                         options: [
                             { value: 'count_down', label: 'Count Down' },
                             { value: 'count_up', label: 'Count Up' }
                         ],
                         mode: 'dropdown'
-                    } 
-                } 
+                    }
+                }
             },
-            { 
-                name: 'style', 
-                selector: { 
-                    select: { 
+            {
+                name: 'style',
+                selector: {
+                    select: {
                         options: [
                             { value: 'classic', label: 'Classic (Circle Progress)' },
                             { value: 'eventy', label: 'Eventy (Compact Horizontal)' },
@@ -387,14 +389,15 @@ export class TimeFlowCardEditor extends LitElement {
                             { value: 'gridy', label: 'Gridy (Header + Dot Grid)' }
                         ],
                         mode: 'dropdown'
-                    } 
-                } 
+                    }
+                }
             },
 
             // ═══════════════════════════════════════════════════════════
             // TIMER SOURCE - Most important, always visible at top
             // ═══════════════════════════════════════════════════════════
             { name: 'timer_entity', selector: { entity: { domain: ['timer', 'sensor', 'input_datetime'] } } },
+            { name: 'target_date_offset', selector: { number: {} } },
 
             // Smart Assistant Auto-Discovery (visible toggles)
             {
