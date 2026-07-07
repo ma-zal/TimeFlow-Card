@@ -433,9 +433,12 @@ export class CountdownService {
     let creationDate;
 
     // Priority: creation_relative > creation_date > now
-    if (config.creation_relative && typeof config.creation_relative === "number") {
+    // Note: numeric config fields can arrive as strings (e.g. from the HA number selector),
+    // so coerce rather than requiring a strict `number` type.
+    const creationRelativeSeconds = Number(config.creation_relative);
+    if (config.creation_relative !== undefined && config.creation_relative !== null && !isNaN(creationRelativeSeconds)) {
       // Calculate creation_date as target_date - creation_relative seconds
-      creationDate = targetDate - config.creation_relative * 1000;
+      creationDate = targetDate - creationRelativeSeconds * 1000;
     } else if (config.creation_date) {
       const creationDateValue = await this.templateService.resolveValue(config.creation_date);
 
