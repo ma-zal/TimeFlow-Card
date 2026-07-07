@@ -1,18 +1,141 @@
-import { LitElement, html, css, TemplateResult } from 'lit';
+import { LitElement, html, css, TemplateResult, CSSResult, nothing } from 'lit';
 import { property, state } from 'lit/decorators.js';
 import { CardConfig } from '../types/index';
 
 /**
  * TimeFlow Card Editor
- * Minimal graphical editor for the TimeFlow custom card.
+ * Full-featured graphical editor for the TimeFlow custom card .
  * Emits `config-changed` events with the updated config.
  */
 export class TimeFlowCardEditor extends LitElement {
     @property({ type: Object }) hass: any = null;
     @state() private _config: CardConfig = { type: 'custom:timeflow-card' } as CardConfig;
 
+    // Track which date fields are in "template mode"
+    @state() private _targetDateTemplateMode: boolean = false;
+    @state() private _creationDateTemplateMode: boolean = false;
+    @state() private _countUpGoalDateTemplateMode: boolean = false;
+
+    static get styles(): CSSResult {
+        return css`
+            .section-header {
+                font-weight: 500;
+                font-size: 14px;
+                color: var(--primary-text-color);
+                margin: 16px 0 8px 0;
+                padding-bottom: 4px;
+                border-bottom: 1px solid var(--divider-color);
+            }
+            .section-header:first-of-type {
+                margin-top: 8px;
+            }
+            ha-form {
+                display: block;
+            }
+            
+            /* Date field with mode toggle */
+            .date-field-container {
+                display: flex;
+                flex-direction: column;
+                gap: 4px;
+                margin-bottom: 16px;
+            }
+            .date-field-header {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+            }
+            .date-field-label {
+                font-weight: 500;
+                font-size: 14px;
+                color: var(--primary-text-color);
+            }
+            .mode-toggle {
+                display: flex;
+                align-items: center;
+                gap: 6px;
+                font-size: 12px;
+                color: var(--secondary-text-color);
+                cursor: pointer;
+                padding: 4px 8px;
+                border-radius: 4px;
+                background: var(--secondary-background-color);
+                border: none;
+            }
+            .mode-toggle:hover {
+                background: var(--primary-color);
+                color: var(--text-primary-color);
+            }
+            .mode-toggle ha-icon {
+                --mdc-icon-size: 16px;
+            }
+            .date-helper {
+                font-size: 12px;
+                color: var(--secondary-text-color);
+                margin-top: 4px;
+            }
+            ha-textfield, input[type="datetime-local"] {
+                width: 100%;
+            }
+            input[type="datetime-local"] {
+                padding: 12px;
+                border: 1px solid var(--divider-color);
+                border-radius: 4px;
+                background: var(--card-background-color);
+                color: var(--primary-text-color);
+                font-size: 14px;
+            }
+            input[type="datetime-local"]:focus {
+                outline: none;
+                border-color: var(--primary-color);
+            }
+            .date-fields-section {
+                display: flex;
+                flex-direction: column;
+                gap: 16px;
+                padding: 16px 0;
+            }
+        `;
+    }
+
     setConfig(config: CardConfig) {
         this._config = { ...config } as CardConfig;
+
+        // Auto-detect if existing values are templates
+        const targetDate = config.target_date || '';
+        const creationDate = config.creation_date || '';
+        const countUpGoalDate = config.count_up_goal_date || '';
+        this._targetDateTemplateMode = this._isTemplate(targetDate);
+        this._creationDateTemplateMode = this._isTemplate(creationDate);
+        this._countUpGoalDateTemplateMode = this._isTemplate(countUpGoalDate);
+    }
+
+    private _isTemplate(value: string): boolean {
+        return value.includes('{{') || value.includes('{%');
+    }
+
+    private _convertToDatetimeLocal(isoDate: string): string {
+        if (!isoDate || this._isTemplate(isoDate)) return '';
+        // Convert ISO format to datetime-local format (YYYY-MM-DDTHH:MM)
+        // Use local time components to avoid timezone shift from toISOString()
+        try {
+            const date = new Date(isoDate);
+            if (isNaN(date.getTime())) return '';
+            const year = date.getFullYear();
+            const month = String(date.getMonth() + 1).padStart(2, '0');
+            const day = String(date.getDate()).padStart(2, '0');
+            const hours = String(date.getHours()).padStart(2, '0');
+            const minutes = String(date.getMinutes()).padStart(2, '0');
+            return `${year}-${month}-${day}T${hours}:${minutes}`;
+        } catch {
+            return '';
+        }
+    }
+
+    private _convertFromDatetimeLocal(localDate: string): string {
+        if (!localDate) return '';
+        // Convert datetime-local to ISO format with seconds
+        return localDate + ':00';
     }
 
     private _fireConfigChanged(config: CardConfig) {
@@ -25,28 +148,66 @@ export class TimeFlowCardEditor extends LitElement {
 
     private _formChanged(ev: CustomEvent) {
         const value = ev.detail?.value || {};
+        const wasExplicit = this._config?.compact_format !== undefined;
+        const previousDisplayedCompactFormat = this._getEffectiveCompactFormat();
         // Merge with existing config and keep the card type
         const newConfig = { ...(this._config || {}), ...value, type: this._config?.type || 'custom:timeflow-card' } as CardConfig;
+
+        if (!wasExplicit && value.compact_format === previousDisplayedCompactFormat) {
+            delete newConfig.compact_format;
+        }
+
         this._config = newConfig;
         this._fireConfigChanged(newConfig);
     }
 
     private _computeHelper(schema: any): string {
         const helpers: Record<string, string> = {
-            'creation_date': 'Examples: "2024-01-01T00:00:00", "{{ now() }}", "{{ states(\'input_datetime.start\') }}"',
-            'target_date': 'Examples: "2024-12-31T23:59:59", "{{ states(\'input_datetime.deadline\') }}"',
-            'progress_color': 'Examples: "#FF0000", "red", "rgb(255,0,0)", "{{ states(\'input_text.color\') }}"',
+            // Timer Source
+            'timer_entity': 'Select a timer, sensor, or input_datetime entity',
+            'mode': 'Choose whether the card counts down to a date or counts up from a date',
+            'target_date': 'ISO date, entity, or template: "2024-12-31T23:59:59", "{{ states(\'input_datetime.deadline\') }}"',
+            'creation_date': 'Start date for countdown progress calculation (optional)',
+            'count_up_goal_date': 'Optional goal/end date for count-up circle progress',
+            'count_up_cycle': 'Optional cycle length for count-up progress: "30d", "12h", "90m", "24:00:00", or seconds',
+            'auto_discover_alexa': 'Automatically find active Alexa timers',
+            'auto_discover_google': 'Automatically find active Google Home timers',
+            'alexa_device_filter': 'Comma-separated list of Alexa device names or IDs to filter timers (e.g., "Kitchen, Living Room")',
+            'prefer_labeled_timers': 'Prefer timers with labels over unnamed ones',
+
+            // Display
+            'title': 'Card title - supports templates: "{{ states(\'sensor.event_name\') }}"',
+            'subtitle': 'Shows time remaining by default; only set for custom text',
+            'subtitle_prefix': 'Text before countdown (e.g., "in", "Only")',
+            'subtitle_suffix': 'Text after countdown (e.g., "left", "remaining")',
+            'expired_text': 'Text shown when countdown completes',
+            'compact_format': '"2d 5h 30m" vs "2 days 5 hours 30 minutes"',
+
+            // Colors
+            'progress_color': 'Progress circle color (hex, name, rgb, or template)',
             'progress_steps': 'Dynamic configuration changes based on percentage thresholds. Define in YAML mode as array of objects. Supported properties: progress_color, background_color, text_color, stroke_width, expired_text. Example: [{from: 0, progress_color: "#00ff00", stroke_width: 10}, {from: 90, progress_color: "#ff0000", background_color: "#300", text_color: "#fff", stroke_width: 20, expired_text: "URGENT!"}]. Properties override corresponding base config when threshold is reached.',
-            'background_color': 'Examples: "#00FF00", "blue", "rgba(0,255,0,0.5)", "{{ \'red\' if is_state(\'switch.alert\', \'on\') else \'green\' }}"',
-            'color': 'Examples: "#333333", "white", "rgb(0,0,0)", "{{ states(\'input_text.color\') }}"',
-            'text_color': 'Examples: "#333333", "white", "rgb(0,0,0)", "{{ states(\'input_text.color\') }}"',
-            'title': 'Examples: "My Timer", "{{ states(\'sensor.event_name\') }}"',
-            'subtitle': 'Shows time remaining by default; only change if you want custom text. Examples: "Countdown", "{{ relative_time(states(\'input_datetime.start\')) }}"',
-            'expired_text': 'Examples: "Time\'s up!", "{{ states(\'input_text.message\') }}"',
-            'expired_animation': 'A subtle animation when timer expires',
-            'width': 'Card width in CSS units (e.g., "300px", "100%", "20em")',
-            'height': 'Card height in CSS units (e.g., "200px", "auto", "15em")',
-            'aspect_ratio': 'Width to height ratio (e.g., "16:9", "4:3", "1:1")'
+            'background_color': 'Card background color',
+            'text_color': 'Text color for title and countdown',
+
+            // Layout
+            'width': 'Card width (e.g., "300px", "100%", "20em")',
+            'height': 'Card height (e.g., "200px", "auto")',
+            'aspect_ratio': 'Width:height ratio (e.g., "16/9", "4/3", "1/1")',
+
+            // Progress Circle
+            'stroke_width': 'Thickness of the progress circle ring',
+            'icon_size': 'Size of the progress circle',
+            'progress_bg_stroke': 'Background circle stroke color (e.g., "#515751", "rgba(81, 87, 81, 0.2)")',
+            'progress_bg_opacity': 'Background circle opacity as percentage (0-100)',
+            'invert_progress': 'Start the progress circle full and subtract from it instead of filling it up',
+
+            // Header Icon
+            'header_icon': 'Material Design icon name (e.g., "mdi:cake-variant")',
+            'header_icon_color': 'Icon color (hex, name, or template)',
+            'header_icon_background': 'Icon background (e.g., "rgba(59, 130, 246, 0.2)")',
+
+            // Style
+            'style': 'Card style: Classic (vertical with circle), Eventy (compact horizontal), Classic Compact (horizontal with circle), or Gridy (dot-grid progress, no header icon)',
         };
         return helpers[schema.name] || '';
     }
@@ -54,6 +215,47 @@ export class TimeFlowCardEditor extends LitElement {
     private _computeLabel(schema: any): string {
         if (schema.label)
             return schema.label;
+
+        const labels: Record<string, string> = {
+            'timer_entity': 'Timer Entity',
+            'mode': 'Mode',
+            'target_date': 'Target Date/Time',
+            'creation_date': 'Start Date (for progress)',
+            'count_up_goal_date': 'Goal Date',
+            'count_up_cycle': 'Count-up Cycle',
+            'auto_discover_alexa': 'Auto-discover Alexa Timers',
+            'auto_discover_google': 'Auto-discover Google Timers',
+            'alexa_device_filter': 'Alexa Device Filter',
+            'prefer_labeled_timers': 'Prefer Labeled Timers',
+            'show_alexa_device': 'Show Alexa Device Name',
+            'show_days': 'Days',
+            'show_hours': 'Hours',
+            'show_minutes': 'Minutes',
+            'show_seconds': 'Seconds',
+            'show_months': 'Months',
+            'show_years': 'Years',
+            'show_weeks': 'Weeks',
+            'compact_format': 'Compact Format',
+            'subtitle_prefix': 'Subtitle Prefix',
+            'subtitle_suffix': 'Subtitle Suffix',
+            'expired_animation': 'Expired Animation',
+            'expired_text': 'Expired Text',
+            'progress_color': 'Progress Color',
+            'background_color': 'Background Color',
+            'text_color': 'Text Color',
+            'stroke_width': 'Stroke Width',
+            'icon_size': 'Circle Size',
+            'progress_bg_stroke': 'Background Stroke Color',
+            'progress_bg_opacity': 'Background Opacity',
+            'invert_progress': 'Invert Progress',
+            'aspect_ratio': 'Aspect Ratio',
+            'header_icon': 'Header Icon',
+            'header_icon_color': 'Icon Color',
+            'header_icon_background': 'Icon Background',
+            'style': 'Card Style',
+        };
+
+        if (labels[schema.name]) return labels[schema.name];
 
         const key = (schema.name ?? '').toString();
         if (!key) return '';
@@ -63,83 +265,319 @@ export class TimeFlowCardEditor extends LitElement {
             .join(' ');
     }
 
+    private _renderDateField(
+        configKey: 'target_date' | 'creation_date' | 'count_up_goal_date',
+        label: string,
+        helper: string,
+        templateMode: boolean,
+        toggleCallback: () => void
+    ): TemplateResult {
+        const value = this._config[configKey] || '';
+
+        return html`
+            <div class="date-field-container">
+                <div class="date-field-header">
+                    <span class="date-field-label">${label}</span>
+                    <button 
+                        class="mode-toggle" 
+                        @click=${toggleCallback}
+                        title=${templateMode ? 'Switch to date picker' : 'Switch to template/Jinja mode'}
+                    >
+                        <ha-icon icon=${templateMode ? 'mdi:calendar' : 'mdi:code-braces'}></ha-icon>
+                        ${templateMode ? 'Picker' : 'Template'}
+                    </button>
+                </div>
+                
+                ${templateMode
+                ? html`
+                        <ha-textfield
+                            .value=${value}
+                            .placeholder=${'{{ states(\'input_datetime.my_date\') }}'}
+                            @input=${(e: Event) => this._updateDateField(configKey, (e.target as HTMLInputElement).value)}
+                        ></ha-textfield>
+                        <div class="date-helper">Enter Jinja template, entity, or ISO date string</div>
+                    `
+                : html`
+                        <input 
+                            type="datetime-local"
+                            .value=${this._convertToDatetimeLocal(value)}
+                            @input=${(e: Event) => this._updateDateField(configKey, this._convertFromDatetimeLocal((e.target as HTMLInputElement).value))}
+                        />
+                        <div class="date-helper">${helper}</div>
+                    `
+            }
+            </div>
+        `;
+    }
+
+    private _updateDateField(configKey: string, value: string): void {
+        const newConfig = { ...this._config, [configKey]: value };
+        this._config = newConfig as CardConfig;
+        this._fireConfigChanged(newConfig as CardConfig);
+    }
+
+    private _toggleTargetDateMode(): void {
+        this._targetDateTemplateMode = !this._targetDateTemplateMode;
+    }
+
+    private _toggleCreationDateMode(): void {
+        this._creationDateTemplateMode = !this._creationDateTemplateMode;
+    }
+
+    private _toggleCountUpGoalDateMode(): void {
+        this._countUpGoalDateTemplateMode = !this._countUpGoalDateTemplateMode;
+    }
+
+    /**
+     * Compute the effective compact_format state for display
+     * Auto-enables when 3+ units are selected (unless explicitly disabled)
+     */
+    private _getEffectiveCompactFormat(): boolean {
+        const { show_years, show_months, show_weeks, show_days, show_hours, show_minutes, show_seconds, compact_format } = this._config;
+
+        // If explicitly set, use that value
+        if (compact_format !== undefined) {
+            return compact_format;
+        }
+
+        // Otherwise, auto-enable if 3+ units are shown
+        const enabledUnits = [show_years, show_months, show_weeks, show_days, show_hours, show_minutes, show_seconds].filter(v => v === true).length;
+        return enabledUnits >= 3;
+    }
+
     render(): TemplateResult {
         const cfg = this._config || {};
+        const mode = cfg.mode === 'count_up' ? 'count_up' : 'count_down';
+
+        // Create a display config that shows the effective compact_format state
+        const displayCfg = {
+            ...cfg,
+            mode,
+            // Show the effective compact_format value for UI consistency
+            compact_format: this._getEffectiveCompactFormat()
+        };
+
+        const selectedStyle = displayCfg.style || 'classic';
 
         const schema = [
-            { name: 'title', required: false, selector: { text: {} } },
-            { name: 'subtitle', required: false, selector: { text: {} } },
-            { name: 'expired_text', required: false, selector: { text: {} } },
-            { name: 'creation_date', required: false, selector: { text: {} } },
-            { name: 'target_date', required: false, selector: { text: {} } },
-            { name: 'timer_entity', required: false, selector: { entity: { domain: 'timer' } } },
+            // ═══════════════════════════════════════════════════════════
+            // CARD STYLE - Choose card appearance
+            // ═══════════════════════════════════════════════════════════════════════════════
+            { 
+                name: 'mode', 
+                selector: { 
+                    select: { 
+                        options: [
+                            { value: 'count_down', label: 'Count Down' },
+                            { value: 'count_up', label: 'Count Up' }
+                        ],
+                        mode: 'dropdown'
+                    } 
+                } 
+            },
+            { 
+                name: 'style', 
+                selector: { 
+                    select: { 
+                        options: [
+                            { value: 'classic', label: 'Classic (Circle Progress)' },
+                            { value: 'eventy', label: 'Eventy (Compact Horizontal)' },
+                            { value: 'classic-compact', label: 'Classic Compact (Horizontal + Circle)' },
+                            { value: 'gridy', label: 'Gridy (Header + Dot Grid)' }
+                        ],
+                        mode: 'dropdown'
+                    } 
+                } 
+            },
+
+            // ═══════════════════════════════════════════════════════════
+            // TIMER SOURCE - Most important, always visible at top
+            // ═══════════════════════════════════════════════════════════
+            { name: 'timer_entity', selector: { entity: { domain: ['timer', 'sensor', 'input_datetime'] } } },
+
+            // Smart Assistant Auto-Discovery (visible toggles)
+            {
+                type: 'grid',
+                schema: [
+                    { name: 'auto_discover_alexa', selector: { boolean: {} } },
+                    { name: 'auto_discover_google', selector: { boolean: {} } },
+                ]
+            },
+
+            // ═══════════════════════════════════════════════════════════
+            // DISPLAY - Title, subtitle, and expired text
+            // ═══════════════════════════════════════════════════════════
+            { name: 'title', selector: { text: {} } },
+            { name: 'subtitle', selector: { text: {} } },
+            {
+                type: 'grid',
+                schema: [
+                    { name: 'subtitle_prefix', selector: { text: {} } },
+                    { name: 'subtitle_suffix', selector: { text: {} } },
+                ]
+            },
+            { name: 'expired_text', selector: { text: {} } },
+
+            // ═══════════════════════════════════════════════════════════
+            // HEADER ICON - Expandable
+            // ═══════════════════════════════════════════════════════════
+            ...(selectedStyle === 'gridy' ? [] : [
+                {
+                    type: "expandable",
+                    title: "Header Icon",
+                    icon: "mdi:image-filter-vintage",
+                    schema: [
+                        { name: 'header_icon', selector: { icon: {} } },
+                        {
+                            type: 'grid',
+                            schema: [
+                                { name: 'header_icon_color', selector: { text: {} } },
+                                { name: 'header_icon_background', selector: { text: {} } },
+                            ]
+                        },
+                    ]
+                }
+            ]),
+
+            // ═══════════════════════════════════════════════════════════
+            // TIME UNITS - Always visible as grid
+            // ═══════════════════════════════════════════════════════════
+            {
+                type: 'grid',
+                schema: [
+                    { name: 'show_years', selector: { boolean: {} } },
+                    { name: 'show_months', selector: { boolean: {} } },
+                    { name: 'show_weeks', selector: { boolean: {} } },
+                    { name: 'show_days', selector: { boolean: {} } },
+                    { name: 'show_hours', selector: { boolean: {} } },
+                    { name: 'show_minutes', selector: { boolean: {} } },
+                    { name: 'show_seconds', selector: { boolean: {} } },
+                    { name: 'compact_format', selector: { boolean: {} } },
+                ]
+            },
+
+            // ═══════════════════════════════════════════════════════════
+            // APPEARANCE - Expandable (secondary settings)
+            // ═══════════════════════════════════════════════════════════
             {
                 type: "expandable",
                 title: "Appearance",
+                icon: "mdi:palette",
                 schema: [
-                    { name: 'progress_color', required: false, selector: { text: {} } },
-                    { name: 'background_color', required: false, selector: { text: {} } },
-                    { name: 'text_color', required: false, selector: { text: {} } },
-                    { name: 'expired_animation', required: false, selector: { boolean: {} } },
+                    { name: 'progress_color', selector: { text: {} } },
+                    { name: 'background_color', selector: { text: {} } },
+                    { name: 'text_color', selector: { text: {} } },
+                    { name: 'expired_animation', selector: { boolean: {} } },
                 ]
             },
+
+            // ═══════════════════════════════════════════════════════════
+            // LAYOUT - Expandable
+            // ═══════════════════════════════════════════════════════════
             {
                 type: "expandable",
                 title: "Layout",
+                icon: "mdi:page-layout-body",
                 schema: [
                     {
                         type: 'grid',
                         schema: [
-                            { name: 'width', required: false, selector: { text: {} } },
-                            { name: 'height', required: false, selector: { text: {} } },
+                            { name: 'width', selector: { text: {} } },
+                            { name: 'height', selector: { text: {} } },
                         ]
                     },
-                    { name: 'aspect_ratio', required: false, selector: { text: {} } },
+                    { name: 'aspect_ratio', selector: { text: {} } },
                 ]
             },
-            {
-                type: "expandable",
-                title: "Time Units",
-                schema: [
-                    {
-                        type: 'grid',
-                        schema: [
-                            { name: 'show_days', required: false, selector: { boolean: {} } },
-                            { name: 'show_hours', required: false, selector: { boolean: {} } },
-                            { name: 'show_minutes', required: false, selector: { boolean: {} } },
-                            { name: 'show_seconds', required: false, selector: { boolean: {} } },
-                        ]
-                    }
-                ]
-            },
+
+            // ═══════════════════════════════════════════════════════════
+            // PROGRESS CIRCLE - Expandable
+            // ═══════════════════════════════════════════════════════════
             {
                 type: "expandable",
                 title: "Progress Circle",
+                icon: "mdi:circle-slice-3",
                 schema: [
                     {
                         type: "grid",
                         schema: [
-                            { name: 'stroke_width', required: false, selector: { number: { min: 1, max: 50 } } },
-                            { name: 'icon_size', required: false, selector: { number: { min: 10, max: 1000 } } },
+                            { name: 'stroke_width', selector: { number: { min: 1, max: 50, step: 1 } } },
+                            { name: 'icon_size', selector: { number: { min: 10, max: 350, step: 5 } } },
                         ]
                     },
-                    { name: 'show_progress_text', required: false, selector: { boolean: {} } },
+                    { name: 'count_up_cycle', selector: { text: {} } },
+                    { name: 'progress_bg_stroke', selector: { text: {} } },
+                    { name: 'progress_bg_opacity', selector: { number: { min: 0, max: 100, step: 5 } } },
+                    { name: 'invert_progress', selector: { boolean: {} } },
                 ]
-            }
+            },
+
+            // ═══════════════════════════════════════════════════════════
+            // ALEXA/GOOGLE OPTIONS - Expandable
+            // ═══════════════════════════════════════════════════════════
+            {
+                type: "expandable",
+                title: "Smart Assistant Options",
+                icon: "mdi:home-assistant",
+                schema: [
+                    { name: 'alexa_device_filter', selector: { text: {} } },
+                    { name: 'prefer_labeled_timers', selector: { boolean: {} } },
+                    { name: 'show_alexa_device', selector: { boolean: {} } },
+                ]
+            },
+
+            // ═══════════════════════════════════════════════════════════
+            // ACTIONS - Expandable
+            // ═══════════════════════════════════════════════════════════
+            {
+                type: "expandable",
+                title: "Tap Actions",
+                icon: "mdi:gesture-tap",
+                schema: [
+                    { name: 'tap_action', selector: { ui_action: {} } },
+                    { name: 'hold_action', selector: { ui_action: {} } },
+                    { name: 'double_tap_action', selector: { ui_action: {} } },
+                ]
+            },
         ];
 
         return html`
-      <div style="padding: 8px;">
-        <ha-form
-          .hass=${this.hass}
-          .data=${cfg}
-          .schema=${schema}
-          @value-changed=${(e: CustomEvent) => this._formChanged(e)}
-          .computeLabel=${this._computeLabel}
-          .computeHelper=${this._computeHelper}
-        ></ha-form>
-      </div>
-    `;
+            <!-- Date Fields with Template Toggle -->
+            <div class="date-fields-section">
+                ${this._renderDateField(
+            'target_date',
+            mode === 'count_up' ? 'Start Date' : 'Target Date',
+            mode === 'count_up' ? 'Date/time the elapsed count begins' : 'Date/time when countdown ends',
+            this._targetDateTemplateMode,
+            () => this._toggleTargetDateMode()
+        )}
+                
+                ${mode === 'count_up'
+                ? this._renderDateField(
+                    'count_up_goal_date',
+                    'Goal Date',
+                    'Optional end date for count-up progress',
+                    this._countUpGoalDateTemplateMode,
+                    () => this._toggleCountUpGoalDateMode()
+                )
+                : this._renderDateField(
+                    'creation_date',
+                    'Creation Date',
+                    'Optional start date for countdown progress',
+                    this._creationDateTemplateMode,
+                    () => this._toggleCreationDateMode()
+                )}
+            </div>
+            
+            <ha-form
+                .hass=${this.hass}
+                .data=${displayCfg}
+                .schema=${schema}
+                @value-changed=${(e: CustomEvent) => this._formChanged(e)}
+                .computeLabel=${this._computeLabel}
+                .computeHelper=${this._computeHelper}
+            ></ha-form>
+        `;
     }
 
 }
