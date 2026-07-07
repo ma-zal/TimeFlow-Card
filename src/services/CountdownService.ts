@@ -1,6 +1,20 @@
 import { TemplateService } from './TemplateService';
 import { HomeAssistant, CountdownState, CardConfig } from '../types/index';
-import { TimerEntityService } from './Timer';
+import { TimerEntityService, TimerData } from './Timer';
+import { LocalizeFunction } from '../utils/localize';
+import { 
+  MS_PER_SECOND, 
+  MS_PER_MINUTE, 
+  MS_PER_HOUR, 
+  MS_PER_DAY,
+  MS_PER_WEEK,
+  SECONDS_PER_MINUTE,
+  SECONDS_PER_HOUR,
+  parseMillisecondsToUnits,
+  parseDurationInputToMilliseconds,
+  parseSecondsToUnits,
+  getUnitLabel
+} from '../utils/TimeUtils';
 
 /**
  * CountdownService - Enhanced with Alexa Timer support
@@ -12,15 +26,248 @@ export class CountdownService {
   private dateParser: any;
   private timeRemaining: CountdownState;
   private expired: boolean;
-  // Cache last selected Alexa timer (for autodiscovery finished display)
+  // Cache last selected smart timer (for autodiscovery finished display - Alexa or Google)
   private lastAlexaTimerData: any | null;
 
   constructor(templateService: any, dateParser: any) {
     this.templateService = templateService;
     this.dateParser = dateParser;
-    this.timeRemaining = { months: 0, days: 0, hours: 0, minutes: 0, seconds: 0, total: 0 };
+    this.timeRemaining = { years: 0, months: 0, weeks: 0, days: 0, hours: 0, minutes: 0, seconds: 0, total: 0 };
     this.expired = false;
-  this.lastAlexaTimerData = null;
+    this.lastAlexaTimerData = null;
+  }
+
+  private _getMode(config: CardConfig): 'count_down' | 'count_up' {
+    return config.mode === 'count_up' ? 'count_up' : 'count_down';
+  }
+
+  private _buildZeroState(): CountdownState {
+    return { years: 0, months: 0, weeks: 0, days: 0, hours: 0, minutes: 0, seconds: 0, total: 0 };
+  }
+
+  private _calculateRangeState(
+    startTimestamp: number,
+    endTimestamp: number,
+    config: CardConfig,
+    roundUpHiddenUnits: boolean
+  ): CountdownState {
+    if (endTimestamp <= startTimestamp) {
+      return this._buildZeroState();
+    }
+
+    const { show_years, show_months, show_weeks, show_days, show_hours, show_minutes, show_seconds } = config;
+    const roundDaysOnceFromHiddenRemainder = roundUpHiddenUnits && !!show_days && !show_hours && !show_minutes && !show_seconds;
+
+    let years = 0, months = 0, weeks = 0, days = 0, hours = 0, minutes = 0, seconds = 0;
+    let totalMilliseconds = endTimestamp - startTimestamp;
+    const rangeStart = new Date(startTimestamp);
+    const rangeEnd = new Date(endTimestamp);
+
+    if (show_years) {
+      const yearResult = this._calculateCalendarYears(rangeStart, rangeEnd);
+      years = yearResult.years;
+      totalMilliseconds = yearResult.remainingMs;
+      rangeStart.setFullYear(rangeStart.getFullYear() + years);
+    }
+
+    if (show_months) {
+      const calendarResult = this._calculateCalendarMonths(rangeStart, rangeEnd);
+      months = calendarResult.months;
+      totalMilliseconds = calendarResult.remainingMs;
+    } else if (show_years && !show_months) {
+      const additionalYears = this._calculateCalendarYears(rangeStart, rangeEnd);
+      years += additionalYears.years;
+      totalMilliseconds = additionalYears.remainingMs;
+      rangeStart.setFullYear(rangeStart.getFullYear() + additionalYears.years);
+    }
+
+    if (show_weeks) {
+      weeks = Math.floor(totalMilliseconds / MS_PER_WEEK);
+      totalMilliseconds %= MS_PER_WEEK;
+    }
+
+    if (show_days) {
+      days = Math.floor(totalMilliseconds / MS_PER_DAY);
+      totalMilliseconds %= MS_PER_DAY;
+    } else if ((show_years || show_months || show_weeks) && !show_days) {
+      const extraDays = Math.floor(totalMilliseconds / MS_PER_DAY);
+      if (show_weeks) {
+        weeks += Math.floor(extraDays / 7);
+        totalMilliseconds -= Math.floor(extraDays / 7) * 7 * MS_PER_DAY;
+      }
+    }
+
+    // When days is the smallest visible unit, round up once if any hidden remainder exists.
+    // This avoids stacking the same partial day again in the hidden hour/minute/second branches.
+    if (roundDaysOnceFromHiddenRemainder && totalMilliseconds > 0) {
+      days += 1;
+      totalMilliseconds = 0;
+    }
+
+    if (show_hours) {
+      hours = Math.floor(totalMilliseconds / MS_PER_HOUR);
+      totalMilliseconds %= MS_PER_HOUR;
+    } else if ((show_years || show_months || show_weeks || show_days) && !show_hours) {
+      const extraHours = Math.floor(totalMilliseconds / MS_PER_HOUR);
+      const wholeDaysFromHours = Math.floor(extraHours / 24);
+      if (show_days) {
+        days += wholeDaysFromHours;
+        totalMilliseconds -= wholeDaysFromHours * MS_PER_DAY;
+      } else if (show_weeks) {
+        days += wholeDaysFromHours;
+        weeks += Math.floor(days / 7);
+        days = days % 7;
+        totalMilliseconds -= wholeDaysFromHours * MS_PER_DAY;
+      }
+    }
+
+    if (show_minutes) {
+      minutes = Math.floor(totalMilliseconds / MS_PER_MINUTE);
+      totalMilliseconds %= MS_PER_MINUTE;
+    } else if ((show_years || show_months || show_weeks || show_days || show_hours) && !show_minutes) {
+      const extraMinutes = Math.floor(totalMilliseconds / MS_PER_MINUTE);
+      if (show_hours) {
+        const wholeHoursFromMinutes = Math.floor(extraMinutes / SECONDS_PER_MINUTE);
+        hours += wholeHoursFromMinutes;
+        totalMilliseconds -= wholeHoursFromMinutes * MS_PER_HOUR;
+      } else if (show_days) {
+        const wholeDaysFromMinutes = Math.floor(extraMinutes / (SECONDS_PER_MINUTE * 24));
+        days += wholeDaysFromMinutes;
+        totalMilliseconds -= wholeDaysFromMinutes * MS_PER_DAY;
+      }
+    }
+
+    if (show_seconds) {
+      seconds = Math.floor(totalMilliseconds / MS_PER_SECOND);
+    } else if ((show_years || show_months || show_weeks || show_days || show_hours || show_minutes) && !show_seconds) {
+      const extraSeconds = Math.floor(totalMilliseconds / MS_PER_SECOND);
+      if (show_minutes) {
+        minutes += Math.floor(extraSeconds / SECONDS_PER_MINUTE);
+      } else if (show_hours) {
+        hours += Math.floor(extraSeconds / SECONDS_PER_HOUR);
+      } else if (show_days) {
+        days += roundUpHiddenUnits ? Math.ceil(extraSeconds / (SECONDS_PER_HOUR * 24)) : Math.floor(extraSeconds / (SECONDS_PER_HOUR * 24));
+      }
+    }
+
+    return { years, months, weeks, days, hours, minutes, seconds, total: endTimestamp - startTimestamp };
+  }
+
+  /**
+   * Calculates precise calendar months between now and target date
+   * Returns the number of full calendar months and remaining milliseconds
+   * @param {Date} nowDate - Current date
+   * @param {Date} targetDate - Target date
+   * @returns {{ months: number, remainingMs: number }} - Calendar months and remaining time
+   */
+  private _calculateCalendarMonths(nowDate: Date, targetDate: Date): { months: number; remainingMs: number } {
+    // Handle expired case
+    if (targetDate <= nowDate) {
+      return { months: 0, remainingMs: 0 };
+    }
+
+    // Count full calendar months by iterating
+    let months = 0;
+    const tempDate = new Date(nowDate);
+
+    while (true) {
+      const nextMonth = new Date(tempDate);
+      nextMonth.setMonth(nextMonth.getMonth() + 1);
+      if (nextMonth <= targetDate) {
+        months++;
+        tempDate.setMonth(tempDate.getMonth() + 1);
+      } else {
+        break;
+      }
+    }
+
+    // Calculate remaining milliseconds after full months
+    const remainingMs = targetDate.getTime() - tempDate.getTime();
+
+    return { months, remainingMs };
+  }
+
+  /**
+   * Calculates precise calendar years between now and target date
+   * Returns the number of full calendar years and remaining milliseconds
+   * @param {Date} nowDate - Current date
+   * @param {Date} targetDate - Target date
+   * @returns {{ years: number, remainingMs: number }} - Calendar years and remaining time
+   */
+  private _calculateCalendarYears(nowDate: Date, targetDate: Date): { years: number; remainingMs: number } {
+    if (targetDate <= nowDate) {
+      return { years: 0, remainingMs: 0 };
+    }
+
+    let years = 0;
+    const tempDate = new Date(nowDate);
+
+    while (true) {
+      const nextYear = new Date(tempDate);
+      nextYear.setFullYear(nextYear.getFullYear() + 1);
+      if (nextYear <= targetDate) {
+        years++;
+        tempDate.setFullYear(tempDate.getFullYear() + 1);
+      } else {
+        break;
+      }
+    }
+
+    const remainingMs = targetDate.getTime() - tempDate.getTime();
+    return { years, remainingMs };
+  }
+
+  /**
+   * Discovers and selects the best smart timer based on priority:
+   * active → paused → finished
+   * 
+   * @param config - Card configuration
+   * @param hass - Home Assistant object
+   * @returns Object with chosen entity ID and timer data, or null if none found
+   */
+  private _findBestSmartTimer(
+    config: CardConfig,
+    hass: HomeAssistant
+  ): { entityId: string; timerData: TimerData } | null {
+    // Skip if explicit timer_entity is configured
+    if (config.timer_entity) return null;
+
+    // Skip if auto-discovery is not enabled
+    if (!config.auto_discover_alexa && !config.auto_discover_google) return null;
+
+    const smartTimers: string[] = [];
+
+    if (config.auto_discover_alexa) {
+      smartTimers.push(...TimerEntityService.discoverAlexaTimers(hass));
+    }
+    if (config.auto_discover_google) {
+      smartTimers.push(...TimerEntityService.discoverGoogleTimers(hass));
+    }
+
+    if (smartTimers.length === 0) return null;
+
+    // Priority selection: active → paused → finished
+    const priorities: Array<(data: TimerData) => boolean> = [
+      (t) => t.isActive,
+      (t) => t.isPaused,
+      (t) => !!t.finished,
+    ];
+
+    for (const predicate of priorities) {
+      const entityId = smartTimers.find(id => {
+        const data = TimerEntityService.getTimerData(id, hass);
+        return data && predicate(data);
+      });
+
+      if (entityId) {
+        const timerData = TimerEntityService.getTimerData(entityId, hass);
+        if (timerData) {
+          return { entityId, timerData };
+        }
+      }
+    }
+
+    return null;
   }
 
   /**
@@ -31,6 +278,8 @@ export class CountdownService {
    */
   async updateCountdown(config: CardConfig, hass: HomeAssistant | null): Promise<CountdownState> {
     try {
+      const mode = this._getMode(config);
+
       // TIMER ENTITY SUPPORT (including Alexa timers)
       if (config.timer_entity && hass) {
         const timerData = TimerEntityService.getTimerData(config.timer_entity, hass);
@@ -41,55 +290,43 @@ export class CountdownService {
           return this.timeRemaining;
         }
       }
-      
-      // AUTO-DISCOVERY: If no timer_entity specified, try to find Alexa timers
-      if (!config.timer_entity && config.auto_discover_alexa && hass) {
-        const alexaTimers = TimerEntityService.discoverAlexaTimers(hass);
-        if (alexaTimers.length > 0) {
-          // Prefer an active timer; otherwise a paused timer
-          let chosen: string | undefined = alexaTimers.find(entityId => {
-            const t = TimerEntityService.getTimerData(entityId, hass);
-            return t && t.isActive;
-          });
-          if (!chosen) {
-            chosen = alexaTimers.find(entityId => {
-              const t = TimerEntityService.getTimerData(entityId, hass);
-              return t && t.isPaused;
-            });
-          }
-          if (chosen) {
-            const timerData = TimerEntityService.getTimerData(chosen, hass);
-            if (timerData) {
-              // cache for later finished display when list becomes empty
-              this.lastAlexaTimerData = timerData;
-              this.timeRemaining = this._timerDataToCountdownState(timerData);
-              this.expired = TimerEntityService.isTimerExpired(timerData);
-              return this.timeRemaining;
-            }
-          }
-          // Nothing suitable selected despite candidates; treat as no timers
-          this.lastAlexaTimerData = null;
-          this.timeRemaining = { months: 0, days: 0, hours: 0, minutes: 0, seconds: 0, total: 0 };
-          this.expired = false;
+
+      // AUTO-DISCOVERY: Try smart assistant timers if enabled
+      if (hass) {
+        const smartTimer = this._findBestSmartTimer(config, hass);
+        if (smartTimer) {
+          // Cache for later finished display when list becomes empty
+          this.lastAlexaTimerData = smartTimer.timerData;
+          this.timeRemaining = this._timerDataToCountdownState(smartTimer.timerData);
+          this.expired = TimerEntityService.isTimerExpired(smartTimer.timerData);
           return this.timeRemaining;
-        } else {
-          // No Alexa timers at all; ensure we clear expired state so UI doesn't stick on Completed
+        }
+
+        // Check if auto-discovery was enabled but no timer found
+        if (config.auto_discover_alexa || config.auto_discover_google) {
+          // Fallback: if we have cached data and it's finished, return finished state
+          if (this.lastAlexaTimerData && TimerEntityService.isTimerExpired(this.lastAlexaTimerData)) {
+            this.timeRemaining = this._timerDataToCountdownState(this.lastAlexaTimerData);
+            this.expired = true;
+            return this.timeRemaining;
+          }
+          // No active or paused timers - clear state
           this.lastAlexaTimerData = null;
-          this.timeRemaining = { months: 0, days: 0, hours: 0, minutes: 0, seconds: 0, total: 0 };
+          this.timeRemaining = { years: 0, months: 0, weeks: 0, days: 0, hours: 0, minutes: 0, seconds: 0, total: 0 };
           this.expired = false;
           return this.timeRemaining;
         }
       }
-      
+
       if (!config.target_date) return this.timeRemaining;
-      
+
       const now = new Date().getTime();
       const targetDateValue = await this.templateService.resolveValue(config.target_date);
-      
+
       if (!targetDateValue) {
         return this.timeRemaining;
       }
-      
+
       // Use the helper method for consistent date parsing
       let targetDate = this.dateParser.parseISODate(targetDateValue);
 
@@ -100,89 +337,24 @@ export class CountdownService {
       ) {
         targetDate += config.target_date_offset * 1000; // Convert seconds to milliseconds
       }
-      
+
       if (isNaN(targetDate)) {
         return this.timeRemaining;
       }
-      
-      const difference = targetDate - now;
 
-      if (difference > 0) {
-        // Calculate time units based on what's enabled - cascade disabled units into enabled ones
-        const { show_months, show_days, show_hours, show_minutes, show_seconds } = config;
-        
-        let totalMilliseconds = difference;
-        let months = 0, days = 0, hours = 0, minutes = 0, seconds = 0;
-        
-        // Find the largest enabled unit and calculate everything from there
-        if (show_months) {
-          months = Math.floor(totalMilliseconds / (1000 * 60 * 60 * 24 * 30.44)); // Average month length
-          totalMilliseconds %= (1000 * 60 * 60 * 24 * 30.44);
-        }
-        
-        if (show_days) {
-          days = Math.floor(totalMilliseconds / (1000 * 60 * 60 * 24));
-          totalMilliseconds %= (1000 * 60 * 60 * 24);
-        } else if (show_months && !show_days) {
-          // If days are disabled but months are enabled, add days to months
-          const extraDays = Math.floor(totalMilliseconds / (1000 * 60 * 60 * 24));
-          months += Math.floor(extraDays / 30.44);
-          totalMilliseconds %= (1000 * 60 * 60 * 24);
-        }
-        
-        if (show_hours) {
-          hours = Math.floor(totalMilliseconds / (1000 * 60 * 60));
-          totalMilliseconds %= (1000 * 60 * 60);
-        } else if ((show_months || show_days) && !show_hours) {
-          // If hours are disabled but larger units are enabled, add hours to the largest enabled unit
-          const extraHours = Math.floor(totalMilliseconds / (1000 * 60 * 60));
-          if (show_days) {
-            days += Math.floor(extraHours / 24);
-          } else if (show_months) {
-            months += Math.floor(extraHours / (24 * 30.44));
-          }
-          totalMilliseconds %= (1000 * 60 * 60);
-        }
-        
-        if (show_minutes) {
-          minutes = Math.floor(totalMilliseconds / (1000 * 60));
-          totalMilliseconds %= (1000 * 60);
-        } else if ((show_months || show_days || show_hours) && !show_minutes) {
-          // If minutes are disabled but larger units are enabled, add minutes to the largest enabled unit
-          const extraMinutes = Math.floor(totalMilliseconds / (1000 * 60));
-          if (show_hours) {
-            hours += Math.floor(extraMinutes / 60);
-          } else if (show_days) {
-            days += Math.floor(extraMinutes / (60 * 24));
-          } else if (show_months) {
-            months += Math.floor(extraMinutes / (60 * 24 * 30.44));
-          }
-          totalMilliseconds %= (1000 * 60);
-        }
-        
-        if (show_seconds) {
-          seconds = Math.floor(totalMilliseconds / 1000);
-        } else if ((show_months || show_days || show_hours || show_minutes) && !show_seconds) {
-          // If seconds are disabled but larger units are enabled, add seconds to the largest enabled unit
-          const extraSeconds = Math.floor(totalMilliseconds / 1000);
-          if (show_minutes) {
-            minutes += Math.floor(extraSeconds / 60);
-          } else if (show_hours) {
-            hours += Math.floor(extraSeconds / (60 * 60));
-          } else if (show_days) {
-            days += Math.floor(extraSeconds / (60 * 60 * 24));
-          } else if (show_months) {
-            months += Math.floor(extraSeconds / (60 * 60 * 24 * 30.44));
-          }
-        }
-
-        this.timeRemaining = { months, days, hours, minutes, seconds, total: difference };
+      if (mode === 'count_up') {
+        this.timeRemaining = now > targetDate
+          ? this._calculateRangeState(targetDate, now, config, false)
+          : this._buildZeroState();
+        this.expired = false;
+      } else if (targetDate > now) {
+        this.timeRemaining = this._calculateRangeState(now, targetDate, config, true);
         this.expired = false;
       } else {
-        this.timeRemaining = { months: 0, days: 0, hours: 0, minutes: 0, seconds: 0, total: 0 };
+        this.timeRemaining = this._buildZeroState();
         this.expired = true;
       }
-      
+
       return this.timeRemaining;
     } catch (error) {
       return this.timeRemaining;
@@ -190,43 +362,32 @@ export class CountdownService {
   }
 
   /**
-   * Calculates progress percentage (enhanced for Alexa)
+   * Calculates progress percentage (enhanced for Alexa and Google Home)
    * @param {Object} config - Card configuration
    * @param {Object} hass - Home Assistant object
    * @returns {Promise<number>} - Progress percentage (0-100)
    */
   async calculateProgress(config: CardConfig, hass: HomeAssistant | null): Promise<number> {
-    // TIMER ENTITY SUPPORT (including Alexa timers)
+    const mode = this._getMode(config);
+
+    // TIMER ENTITY SUPPORT (including Alexa and Google timers)
     if (config.timer_entity && hass) {
       const timerData = TimerEntityService.getTimerData(config.timer_entity, hass);
       if (!timerData) return 0;
       return timerData.progress;
     }
-    
-    // AUTO-DISCOVERY: Try Alexa timers if enabled
-    if (!config.timer_entity && config.auto_discover_alexa && hass) {
-      const alexaTimers = TimerEntityService.discoverAlexaTimers(hass);
-      if (alexaTimers.length > 0) {
-        let chosen: string | undefined = alexaTimers.find(entityId => {
-          const t = TimerEntityService.getTimerData(entityId, hass);
-          return t && t.isActive;
-        });
-        if (!chosen) {
-          chosen = alexaTimers.find(entityId => {
-            const t = TimerEntityService.getTimerData(entityId, hass);
-            return t && t.isPaused;
-          });
-        }
-        if (chosen) {
-          const timerData = TimerEntityService.getTimerData(chosen, hass);
-          if (timerData) return timerData.progress;
-        }
+
+    // AUTO-DISCOVERY: Try smart assistant timers if enabled
+    if (hass) {
+      const smartTimer = this._findBestSmartTimer(config, hass);
+      if (smartTimer) {
+        return smartTimer.timerData.progress;
       }
     }
-    
+
     const targetDateValue = await this.templateService.resolveValue(config.target_date);
     if (!targetDateValue) return 0;
-    
+
     // Use the helper method for consistent date parsing
     let targetDate = this.dateParser.parseISODate(targetDateValue);
 
@@ -239,11 +400,40 @@ export class CountdownService {
     }
     
     const now = Date.now();
-    
+
+    if (mode === 'count_up') {
+      if (isNaN(targetDate) || now <= targetDate) return 0;
+
+      const elapsed = now - targetDate;
+
+      if (config.count_up_goal_date) {
+        const goalDateValue = await this.templateService.resolveValue(config.count_up_goal_date);
+        const goalDate = this.dateParser.parseISODate(goalDateValue);
+
+        if (!isNaN(goalDate) && goalDate > targetDate) {
+          const totalDuration = goalDate - targetDate;
+          return Math.min(100, Math.max(0, (elapsed / totalDuration) * 100));
+        }
+      }
+
+      let cycleInput = config.count_up_cycle;
+      if (typeof cycleInput === 'string') {
+        cycleInput = await this.templateService.resolveValue(cycleInput);
+      }
+
+      const cycleMs = parseDurationInputToMilliseconds(cycleInput);
+      if (cycleMs > 0) {
+        const cycleElapsed = elapsed % cycleMs;
+        return Math.min(100, Math.max(0, (cycleElapsed / cycleMs) * 100));
+      }
+
+      return 0;
+    }
+
     let creationDate;
     if (config.creation_date) {
       const creationDateValue = await this.templateService.resolveValue(config.creation_date);
-      
+
       if (creationDateValue) {
         // Use the helper method for consistent date parsing
         creationDate = this.dateParser.parseISODate(creationDateValue);
@@ -253,241 +443,272 @@ export class CountdownService {
     } else {
       creationDate = now; // Fallback to now if somehow no creation date
     }
-    
+
     const totalDuration = targetDate - creationDate;
     if (totalDuration <= 0) return 100;
-    
+
     const elapsed = now - creationDate;
     const progress = Math.min(100, Math.max(0, (elapsed / totalDuration) * 100));
-    
+
     return this.expired ? 100 : progress;
   }
 
+  getPrimaryDisplayUnit(config: CardConfig): { value: number; unit: 'year' | 'month' | 'week' | 'day' | 'hour' | 'minute' | 'second' } {
+    const { years, months, weeks, days, hours, minutes, seconds, total } = this.timeRemaining || this._buildZeroState();
+    const { show_years, show_months, show_weeks, show_days, show_hours, show_minutes, show_seconds } = config;
+
+    if (show_years !== false && years > 0) {
+      return { value: years, unit: 'year' };
+    }
+    if (show_months !== false && months > 0) {
+      return { value: months, unit: 'month' };
+    }
+    if (show_weeks !== false && weeks > 0) {
+      return { value: weeks, unit: 'week' };
+    }
+    if (show_days !== false && days > 0) {
+      return { value: days, unit: 'day' };
+    }
+    if (show_hours !== false && hours > 0) {
+      return { value: hours, unit: 'hour' };
+    }
+    if (show_minutes !== false && minutes > 0) {
+      return { value: minutes, unit: 'minute' };
+    }
+    if (show_seconds !== false && seconds > 0) {
+      return { value: seconds, unit: 'second' };
+    }
+
+    const totalMs = total || 0;
+
+    if (totalMs <= 0) {
+      return { value: 0, unit: show_seconds !== false ? 'second' : 'day' };
+    }
+
+    const fallback = parseMillisecondsToUnits(totalMs);
+
+    if (fallback.days > 0) {
+      return { value: fallback.days, unit: 'day' };
+    }
+    if (fallback.hours > 0) {
+      return { value: fallback.hours, unit: 'hour' };
+    }
+    if (fallback.minutes > 0) {
+      return { value: fallback.minutes, unit: 'minute' };
+    }
+    if (fallback.seconds > 0) {
+      return { value: fallback.seconds, unit: 'second' };
+    }
+
+    return { value: 0, unit: 'second' };
+  }
+
   /**
-   * Gets the main display value and label (enhanced for Alexa)
+   * Gets the main display value and label (enhanced for Alexa and Google Home)
    * @param {Object} config - Card configuration
    * @param {Object} hass - Home Assistant object (NEW parameter)
    * @returns {Object} - Object with value and label properties
    */
   getMainDisplay(config: CardConfig, hass?: HomeAssistant | null): { value: string; label: string } {
-    // TIMER ENTITY SUPPORT (including Alexa timers)
+    const mode = this._getMode(config);
+    const labelStyle = mode === 'count_up' ? 'timer' : 'mainDisplay';
+
+    // TIMER ENTITY SUPPORT (including Alexa and Google timers)
     if (config.timer_entity && hass) {
       const timerData = TimerEntityService.getTimerData(config.timer_entity, hass);
       if (timerData) {
         const { hours, minutes, seconds } = this.timeRemaining;
-        
-        // Special handling for Alexa timers
-        if (timerData.isAlexaTimer) {
+
+        // Special handling for smart assistant timers
+        if (timerData.isAlexaTimer || timerData.isGoogleTimer) {
           if (TimerEntityService.isTimerExpired(timerData)) {
             return { value: '🔔', label: TimerEntityService.getTimerSubtitle(timerData, false) };
           }
-          if (hours > 0) return { value: hours.toString(), label: hours === 1 ? 'hour left' : 'hours left' };
-          if (minutes > 0) return { value: minutes.toString(), label: minutes === 1 ? 'minute left' : 'minutes left' };
-          return { value: seconds.toString(), label: seconds === 1 ? 'second left' : 'seconds left' };
+          if (hours > 0) return { value: hours.toString(), label: getUnitLabel('hour', hours, labelStyle) };
+          if (minutes > 0) return { value: minutes.toString(), label: getUnitLabel('minute', minutes, labelStyle) };
+          return { value: seconds.toString(), label: getUnitLabel('second', seconds, labelStyle) };
         }
-        
+
         // Standard timer handling
-        if (hours > 0) return { value: hours.toString(), label: hours === 1 ? 'hour' : 'hours' };
-        if (minutes > 0) return { value: minutes.toString(), label: minutes === 1 ? 'minute' : 'minutes' };
-        return { value: seconds.toString(), label: seconds === 1 ? 'second' : 'seconds' };
+        if (hours > 0) return { value: hours.toString(), label: getUnitLabel('hour', hours, 'timer') };
+        if (minutes > 0) return { value: minutes.toString(), label: getUnitLabel('minute', minutes, 'timer') };
+        return { value: seconds.toString(), label: getUnitLabel('second', seconds, 'timer') };
       }
     }
-    
-    // AUTO-DISCOVERY: Try Alexa timers if enabled
-    if (!config.timer_entity && config.auto_discover_alexa && hass) {
-      const alexaTimers = TimerEntityService.discoverAlexaTimers(hass);
-      if (alexaTimers.length > 0) {
-        let chosen: string | undefined = alexaTimers.find(entityId => {
-          const t = TimerEntityService.getTimerData(entityId, hass);
-          return t && t.isActive;
-        });
-        if (!chosen) {
-          chosen = alexaTimers.find(entityId => {
-            const t = TimerEntityService.getTimerData(entityId, hass);
-            return t && t.isPaused;
-          });
+
+    // AUTO-DISCOVERY: Try smart assistant timers if enabled
+    if (hass) {
+      const smartTimer = this._findBestSmartTimer(config, hass);
+      if (smartTimer) {
+        const { timerData } = smartTimer;
+        // Cache for finished view if list empties out later
+        this.lastAlexaTimerData = timerData;
+        // Update time remaining for proper display calculation
+        this.timeRemaining = this._timerDataToCountdownState(timerData);
+        const { hours, minutes, seconds } = this.timeRemaining;
+        if (TimerEntityService.isTimerExpired(timerData)) {
+          return { value: '🔔', label: TimerEntityService.getTimerSubtitle(timerData, false) };
         }
-        if (chosen) {
-          const timerData = TimerEntityService.getTimerData(chosen, hass);
-          if (timerData) {
-            // cache for finished view if list empties out later
-            this.lastAlexaTimerData = timerData;
-            const { hours, minutes, seconds } = this.timeRemaining;
-            if (TimerEntityService.isTimerExpired(timerData)) {
-              return { value: '🔔', label: TimerEntityService.getTimerSubtitle(timerData, false) };
-            }
-            if (hours > 0) return { value: hours.toString(), label: hours === 1 ? 'hour left' : 'hours left' };
-            if (minutes > 0) return { value: minutes.toString(), label: minutes === 1 ? 'minute left' : 'minutes left' };
-            return { value: seconds.toString(), label: seconds === 1 ? 'second left' : 'seconds left' };
-          }
-        }
-        // No chosen timer; if we have a cached one that's finished, show its finished label
+        if (hours > 0) return { value: hours.toString(), label: getUnitLabel('hour', hours, labelStyle) };
+        if (minutes > 0) return { value: minutes.toString(), label: getUnitLabel('minute', minutes, labelStyle) };
+        return { value: seconds.toString(), label: getUnitLabel('second', seconds, labelStyle) };
+      }
+
+      // No timer found; check if auto-discovery was enabled
+      if (config.auto_discover_alexa || config.auto_discover_google) {
+        // Fallback: if we have a cached timer that's finished, show its finished label
         if (this.lastAlexaTimerData && TimerEntityService.isTimerExpired(this.lastAlexaTimerData)) {
           return { value: '🔔', label: TimerEntityService.getTimerSubtitle(this.lastAlexaTimerData, false) };
         }
       }
     }
-    
-    const { show_months, show_days, show_hours, show_minutes, show_seconds } = config;
-    const { months, days, hours, minutes, seconds } = this.timeRemaining;
-    
-    if (this.expired) {
-      // For auto-discovered Alexa timers, prefer timer-style expired text and cached label if available
-      if (config.auto_discover_alexa) {
+
+    if (mode !== 'count_up' && this.expired) {
+      // For auto-discovered smart assistant timers, prefer timer-style expired text and cached label if available
+      if (config.auto_discover_alexa || config.auto_discover_google) {
         if (this.lastAlexaTimerData) {
           return { value: '🔔', label: TimerEntityService.getTimerSubtitle(this.lastAlexaTimerData, false) };
         }
         return { value: '🔔', label: 'Timer complete' };
       }
-      return { value: '🎉', label: 'Completed!' };
+      return { value: 'Done', label: 'Completed!' };
     }
-    
-    // Show the largest time unit that is enabled and has a value > 0
-    if (show_months && months > 0) {
-      return { value: months.toString(), label: months === 1 ? 'month left' : 'months left' };
-    } else if (show_days && days > 0) {
-      return { value: days.toString(), label: days === 1 ? 'day left' : 'days left' };
-    } else if (show_hours && hours > 0) {
-      return { value: hours.toString(), label: hours === 1 ? 'hour left' : 'hours left' };
-    } else if (show_minutes && minutes > 0) {
-      return { value: minutes.toString(), label: minutes === 1 ? 'minute left' : 'minutes left' };
-    } else if (show_seconds && seconds >= 0) {
-      return { value: seconds.toString(), label: seconds === 1 ? 'second left' : 'seconds left' };
-    }
-    
-    return { value: '0', label: 'seconds left' };
+
+    const primaryUnit = this.getPrimaryDisplayUnit(config);
+    return {
+      value: primaryUnit.value.toString(),
+      label: getUnitLabel(primaryUnit.unit, primaryUnit.value, labelStyle)
+    };
   }
 
   /**
-   * Gets the subtitle text showing time breakdown (enhanced for Alexa)
+   * Gets the subtitle text showing time breakdown (enhanced for Alexa and Google Home)
    * @param {Object} config - Card configuration
    * @param {Object} hass - Home Assistant object
+   * @param {LocalizeFunction} localize - Optional localization function
    * @returns {string} - Formatted subtitle text
    */
-  getSubtitle(config: CardConfig, hass: HomeAssistant | null): string {
-    // TIMER ENTITY SUPPORT (including Alexa timers)
+  getSubtitle(config: CardConfig, hass: HomeAssistant | null, localize?: LocalizeFunction, useCompact: boolean = true): string {
+    const t = localize || ((key: string) => key);
+    const mode = this._getMode(config);
+    // TIMER ENTITY SUPPORT (Handles explicit entity)
     if (config.timer_entity && hass) {
       const timerData = TimerEntityService.getTimerData(config.timer_entity, hass);
       if (timerData) {
-        return TimerEntityService.getTimerSubtitle(timerData, config.show_seconds !== false);
+        // For smart assistant timers, always use their specific subtitle logic
+        if (timerData.isAlexaTimer || timerData.isGoogleTimer) {
+          return TimerEntityService.getTimerSubtitle(timerData, config.show_seconds !== false, localize, useCompact);
+        }
+        // For standard HA timers, use the timer subtitle if available
+        return TimerEntityService.getTimerSubtitle(timerData, config.show_seconds !== false, localize, useCompact);
       }
       return 'Timer not found';
     }
-    
-    // AUTO-DISCOVERY: Try Alexa timers if enabled
-    if (!config.timer_entity && config.auto_discover_alexa && hass) {
-      const alexaTimers = TimerEntityService.discoverAlexaTimers(hass);
-      if (alexaTimers.length > 0) {
-        let chosen: string | undefined = alexaTimers.find(entityId => {
-          const t = TimerEntityService.getTimerData(entityId, hass);
-          return t && t.isActive;
-        });
-        if (!chosen) {
-          chosen = alexaTimers.find(entityId => {
-            const t = TimerEntityService.getTimerData(entityId, hass);
-            return t && t.isPaused;
-          });
-        }
-        if (chosen) {
-          const timerData = TimerEntityService.getTimerData(chosen, hass);
-          if (timerData) {
-            this.lastAlexaTimerData = timerData; // cache for finished fallback
-            return TimerEntityService.getTimerSubtitle(timerData, config.show_seconds !== false);
-          }
-        }
-        // No chosen; if we have cached data and it’s finished, return finished label
+
+    // --- AUTO-DISCOVERY: Try smart assistant timers if enabled ---
+    if (hass) {
+      const smartTimer = this._findBestSmartTimer(config, hass);
+      if (smartTimer) {
+        const { timerData } = smartTimer;
+        // Cache for finished fallback
+        this.lastAlexaTimerData = timerData;
+        this.timeRemaining = this._timerDataToCountdownState(timerData);
+        return TimerEntityService.getTimerSubtitle(timerData, config.show_seconds !== false, localize, useCompact);
+      }
+
+      // Check if auto-discovery was enabled but no timer found
+      if (config.auto_discover_alexa || config.auto_discover_google) {
+        // Fallback: if we have a cached timer that just finished, show its subtitle
         if (this.lastAlexaTimerData && TimerEntityService.isTimerExpired(this.lastAlexaTimerData)) {
-          return TimerEntityService.getTimerSubtitle(this.lastAlexaTimerData, config.show_seconds !== false);
+          return TimerEntityService.getTimerSubtitle(this.lastAlexaTimerData, config.show_seconds !== false, localize, useCompact);
         }
+        // No smart timer entities were discovered at all
+        return t('timer.no_timers');
       }
-      // No active or paused timers
-      return 'No timers';
     }
-    
-    if (this.expired) {
-      // For auto-discovered Alexa timers, align expired text with timer semantics and cached label when available
-      if (config.auto_discover_alexa) {
-        if (this.lastAlexaTimerData) {
-          return TimerEntityService.getTimerSubtitle(this.lastAlexaTimerData, config.show_seconds !== false);
-        }
-        return 'Timer complete';
-      }
-      const { expired_text = 'Completed! 🎉' } = config;
+
+    // --- FALLBACK TO STANDARD COUNTDOWN ---
+    if (mode !== 'count_up' && this.expired) {
+      const { expired_text = t('countdown.completed') } = config;
       return expired_text;
     }
-    
-    const { months, days, hours, minutes, seconds } = this.timeRemaining || { months: 0, days: 0, hours: 0, minutes: 0, seconds: 0 };
-    const { show_months, show_days, show_hours, show_minutes, show_seconds } = config;
-    
+
+    const { years, months, weeks, days, hours, minutes, seconds } = this.timeRemaining || { years: 0, months: 0, weeks: 0, days: 0, hours: 0, minutes: 0, seconds: 0 };
+    const { show_years, show_months, show_weeks, show_days, show_hours, show_minutes, show_seconds, compact_format, subtitle_prefix, subtitle_suffix } = config;
+
     const parts = [];
-    
-    // Add each time unit based on configuration and if value > 0
-    if (show_months && months > 0) {
-      parts.push({ value: months, unit: months === 1 ? 'month' : 'months' });
-    }
-    
-    if (show_days && days > 0) {
-      parts.push({ value: days, unit: days === 1 ? 'day' : 'days' });
-    }
-    
-    if (show_hours && hours > 0) {
-      parts.push({ value: hours, unit: hours === 1 ? 'hour' : 'hours' });
-    }
-    
-    if (show_minutes && minutes > 0) {
-      parts.push({ value: minutes, unit: minutes === 1 ? 'minute' : 'minutes' });
-    }
-    
-    if (show_seconds && seconds > 0) {
-      parts.push({ value: seconds, unit: seconds === 1 ? 'second' : 'seconds' });
-    }
-    
-    // If no parts are shown or all values are 0, show the largest enabled unit
+
+    if (show_years && years > 0) parts.push({ value: years, unit: years === 1 ? t('time.year_full') : t('time.years_full') });
+    if (show_months && months > 0) parts.push({ value: months, unit: months === 1 ? t('time.month_full') : t('time.months_full') });
+    if (show_weeks && weeks > 0) parts.push({ value: weeks, unit: weeks === 1 ? t('time.week_full') : t('time.weeks_full') });
+    if (show_days && days > 0) parts.push({ value: days, unit: days === 1 ? t('time.day_full') : t('time.days_full') });
+    if (show_hours && hours > 0) parts.push({ value: hours, unit: hours === 1 ? t('time.hour_full') : t('time.hours_full') });
+    if (show_minutes && minutes > 0) parts.push({ value: minutes, unit: minutes === 1 ? t('time.minute_full') : t('time.minutes_full') });
+    if (show_seconds && seconds > 0) parts.push({ value: seconds, unit: seconds === 1 ? t('time.second_full') : t('time.seconds_full') });
+
+    // Helper to apply prefix/suffix
+    const applyPrefixSuffix = (text: string): string => {
+      const prefix = subtitle_prefix ? `${subtitle_prefix} ` : '';
+      const suffix = subtitle_suffix ? ` ${subtitle_suffix}` : '';
+      return `${prefix}${text}${suffix}`;
+    };
+
     if (parts.length === 0) {
-      if (show_months) {
-        parts.push({ value: months, unit: months === 1 ? 'month' : 'months' });
-      } else if (show_days) {
-        parts.push({ value: days, unit: days === 1 ? 'day' : 'days' });
-      } else if (show_hours) {
-        parts.push({ value: hours, unit: hours === 1 ? 'hour' : 'hours' });
-      } else if (show_minutes) {
-        parts.push({ value: minutes, unit: minutes === 1 ? 'minute' : 'minutes' });
-      } else if (show_seconds) {
-        parts.push({ value: seconds, unit: seconds === 1 ? 'second' : 'seconds' });
+      // Fallback: show the highest available time unit when selected units have no remaining time
+      // This handles cases like: user selected only "days" but less than 24 hours remain
+      // We need to calculate from total since disabled units may not be populated
+      const totalMs = this.timeRemaining?.total || 0;
+      if (totalMs > 0) {
+        const primaryUnit = this.getPrimaryDisplayUnit(config);
+        const unitLabels = {
+          year: [t('time.year_full'), t('time.years_full')],
+          month: [t('time.month_full'), t('time.months_full')],
+          week: [t('time.week_full'), t('time.weeks_full')],
+          day: [t('time.day_full'), t('time.days_full')],
+          hour: [t('time.hour_full'), t('time.hours_full')],
+          minute: [t('time.minute_full'), t('time.minutes_full')],
+          second: [t('time.second_full'), t('time.seconds_full')],
+        } as const;
+        const [singular, plural] = unitLabels[primaryUnit.unit];
+        return applyPrefixSuffix(`${primaryUnit.value} ${primaryUnit.value === 1 ? singular : plural}`);
       }
+      // Only show "0 seconds" or "starting" if truly at zero
+      if (show_seconds) return applyPrefixSuffix(`0 ${t('time.seconds_full')}`);
+      return t('countdown.starting');
     }
-    
-    // Count enabled units for formatting decision
-    const enabledUnits = [show_months, show_days, show_hours, show_minutes, show_seconds].filter(Boolean).length;
-    
-    // Format based on number of enabled units
-    if (enabledUnits <= 2 && parts.length > 0) {
-      // Natural format for 1-2 enabled units: "1 month and 10 days"
-      if (parts.length === 1) {
-        return `${parts[0].value} ${parts[0].unit}`;
-      } else if (parts.length === 2) {
-        return `${parts[0].value} ${parts[0].unit} and ${parts[1].value} ${parts[1].unit}`;
-      }
+
+    // If only one unit, always show full format
+    if (parts.length === 1) return applyPrefixSuffix(`${parts[0].value} ${parts[0].unit}`);
+
+    // For 2+ units, decide format:
+    // - If compact_format is explicitly true, use compact
+    // - If compact_format is explicitly false, use full
+    // - If compact_format is undefined (auto), use compact only if 3+ units
+    const useCompactFormat = compact_format === true || (compact_format !== false && parts.length >= 3);
+
+    if (useCompactFormat) {
+      const compact = parts.map(p => `${p.value}${p.unit.charAt(0)}`).join(' ');
+      return applyPrefixSuffix(compact);
     }
-    
-    // Compact format for 3+ enabled units: "1mo 10d 5h"
-    return parts.map(part => {
-      const shortUnit = part.unit.charAt(0); // m, d, h, m, s
-      return `${part.value}${shortUnit}`;
-    }).join(' ') || '0s';
+
+    // Full format for 2 units
+    return applyPrefixSuffix(parts.map(p => `${p.value} ${p.unit}`).join(' '));
   }
 
   /**
    * Converts TimerData to CountdownState for unified interface
    */
   private _timerDataToCountdownState(timerData: any): CountdownState {
+    const units = parseSecondsToUnits(timerData.remaining);
     return {
+      years: 0,
       months: 0,
-      days: 0,
-      hours: Math.floor(timerData.remaining / 3600),
-      minutes: Math.floor((timerData.remaining % 3600) / 60),
-      seconds: Math.floor(timerData.remaining % 60),
-      total: timerData.remaining * 1000 // ms for consistency
+      weeks: 0,
+      days: units.days,
+      hours: units.hours,
+      minutes: units.minutes,
+      seconds: units.seconds,
+      total: timerData.remaining * MS_PER_SECOND // ms for consistency
     };
   }
 
@@ -518,6 +739,16 @@ export class CountdownService {
   }
 
   /**
+   * Gets available Google Home timers for debugging/info
+   * @param {Object} hass - Home Assistant object
+   * @returns {string[]} - Array of Google Home timer entity IDs
+   */
+  getAvailableGoogleTimers(hass: HomeAssistant | null): string[] {
+    if (!hass) return [];
+    return TimerEntityService.discoverGoogleTimers(hass);
+  }
+
+  /**
    * Get the current timer entity being used (for default actions)
    */
   getCurrentTimerEntity(config: any, hass: any): string | null {
@@ -526,19 +757,32 @@ export class CountdownService {
       return config.timer_entity;
     }
 
-    // If auto-discovery is enabled, try to find the best Alexa timer
-    if (config.auto_discover_alexa && hass) {
-      const alexaTimers = TimerEntityService.discoverAlexaTimers(hass);
-      if (alexaTimers.length > 0) {
+    // If auto-discovery is enabled, try to find the best smart assistant timer
+    if ((config.auto_discover_alexa || config.auto_discover_google) && hass) {
+      let smartTimers: string[] = [];
+
+      // Discover Alexa timers if enabled
+      if (config.auto_discover_alexa) {
+        const alexaTimers = TimerEntityService.discoverAlexaTimers(hass);
+        smartTimers.push(...alexaTimers);
+      }
+
+      // Discover Google Home timers if enabled
+      if (config.auto_discover_google) {
+        const googleTimers = TimerEntityService.discoverGoogleTimers(hass);
+        smartTimers.push(...googleTimers);
+      }
+
+      if (smartTimers.length > 0) {
         // Find the first active timer, or return the first timer if none are active
-        for (const entityId of alexaTimers) {
+        for (const entityId of smartTimers) {
           const timerData = TimerEntityService.getTimerData(entityId, hass);
           if (timerData && timerData.isActive) {
             return entityId;
           }
         }
         // No active timers found, return the first one
-        return alexaTimers[0];
+        return smartTimers[0];
       }
     }
 

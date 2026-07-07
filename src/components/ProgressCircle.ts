@@ -7,7 +7,8 @@ export class ProgressCircle extends LitElement {
   @property({ type: String }) color: string = '#4CAF50';
   @property({ type: Number }) size: number = 100;
   @property({ type: Number }) strokeWidth: number = 15;
-  @property({ type: Boolean }) showProgressText: boolean = false;
+  @property({ type: String }) bgStroke: string = '#FFFFFF1A';  // Background circle stroke color
+  @property({ type: Number }) bgOpacity: number | null = null;  // Background circle opacity (0-100)
 
   static get styles(): CSSResult {
     return css`
@@ -22,15 +23,6 @@ export class ProgressCircle extends LitElement {
         display: block;
         margin: 0 auto;
       }
-      .progress-text {
-        font-size: 16px;  
-        font-weight: bold;
-        fill: var(--progress-text-color, #f4f5f4ff);
-        dominant-baseline: middle;
-        text-anchor: middle;
-        pointer-events: none;
-        user-select: none;
-      }
       .updating {
         transition: stroke-dashoffset 0.3s ease;
       }
@@ -43,7 +35,8 @@ export class ProgressCircle extends LitElement {
     this.color = '#4CAF50';
     this.size = 100;
     this.strokeWidth = 15;
-    this.showProgressText = false;
+    this.bgStroke = '#FFFFFF1A';
+    this.bgOpacity = null;
   }
 
   updated(changed: PropertyValues): void {
@@ -84,8 +77,8 @@ export class ProgressCircle extends LitElement {
     const circumference = 2 * Math.PI * radius;
     const offset = circumference - (safeProgress / 100) * circumference;
 
-    // Calculate responsive font size based on circle size
-    const fontSize = Math.max(10, Math.min(24, size * 0.16));
+    // Compute background circle styles
+    const bgStyle = this.bgOpacity !== null ? `filter: opacity(${this.bgOpacity}%)` : '';
 
     return html`
       <div class="progress-wrapper" style="width:${size}px; height:${size}px;">
@@ -99,8 +92,9 @@ export class ProgressCircle extends LitElement {
             cx="${size / 2}" cy="${size / 2}"
             r="${radius}"
             fill="none"
-            stroke="#FFFFFF1A"
+            stroke="${this.bgStroke}"
             stroke-width="${stroke}"
+            style="${bgStyle}"
           ></circle>
           <circle
             class="progress-bar"
@@ -118,19 +112,6 @@ export class ProgressCircle extends LitElement {
               transform-origin: ${size / 2}px ${size / 2}px;
             "
           ></circle>
-
-          ${this.showProgressText
-            ? html`
-                <text
-                  x="50%" y="50%"
-                  class="progress-text"
-                  dy="2"
-                  style="font-size: ${fontSize}px;"
-                >
-                  ${Math.round(safeProgress)}%
-                </text>
-              `
-            : html`<!-- showProgressText is false -->`}
         </svg>
       </div>
     `;
