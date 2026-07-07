@@ -3,6 +3,8 @@
  * Ensures security, type safety, and data integrity with graceful error handling
  */
 
+import { parseDurationInputToMilliseconds } from './TimeUtils';
+
 export interface ValidationError {
   field: string;
   message: string;
@@ -45,7 +47,7 @@ export class ConfigValidator {
       };
     }
     
-    // Validate target_date (required field, unless using timer_entity or auto_discover_alexa)
+    // Validate target_date (required field, unless using timer_entity, auto_discover_alexa, or auto_discover_google)
     if (config.target_date) {
       if (!this.isValidDateInput(config.target_date)) {
         errors.push({
@@ -56,13 +58,13 @@ export class ConfigValidator {
           value: config.target_date
         });
       }
-    } else if (!config.timer_entity && !config.auto_discover_alexa) {
-      // target_date is only required if timer_entity and auto_discover_alexa are not provided
+    } else if (!config.timer_entity && !config.auto_discover_alexa && !config.auto_discover_google) {
+      // target_date is only required if timer_entity, auto_discover_alexa, and auto_discover_google are not provided
       errors.push({
         field: 'target_date',
-        message: 'Either "target_date", "timer_entity", or "auto_discover_alexa" must be provided',
+        message: 'Either "target_date", "timer_entity", "auto_discover_alexa", or "auto_discover_google" must be provided',
         severity: 'critical',
-        suggestion: 'Add target_date field with a valid date value like "2025-12-31T23:59:59" OR specify a timer_entity like "timer.my_timer" OR enable auto_discover_alexa.',
+        suggestion: 'Add target_date field with a valid date value like "2025-12-31T23:59:59" OR specify a timer_entity like "timer.my_timer" OR enable auto_discover_alexa OR enable auto_discover_google.',
         value: undefined
       });
     }
@@ -73,7 +75,7 @@ export class ConfigValidator {
         field: 'timer_entity',
         message: 'Invalid timer_entity format',
         severity: 'warning',
-        suggestion: 'Use a valid entity ID like "timer.my_timer" or "sensor.alexa_timer".',
+        suggestion: 'Use a valid entity ID like "timer.my_timer", "sensor.alexa_timer", or "sensor.kitchen_display_timers" (Google Home).',
         value: config.timer_entity
       });
     }
@@ -86,6 +88,42 @@ export class ConfigValidator {
         severity: 'warning',
         suggestion: 'Use ISO date string, entity ID, or template. This field is optional.',
         value: config.creation_date
+      });
+    }
+
+    // Validate count_up_goal_date if provided
+    if (config.count_up_goal_date && !this.isValidDateInput(config.count_up_goal_date)) {
+      errors.push({
+        field: 'count_up_goal_date',
+        message: 'Invalid count_up_goal_date format',
+        severity: 'warning',
+        suggestion: 'Use ISO date string, entity ID, or template. This field is optional.',
+        value: config.count_up_goal_date
+      });
+    }
+
+    // Validate mode
+    if (config.mode !== undefined && !['count_down', 'count_up'].includes(config.mode)) {
+      errors.push({
+        field: 'mode',
+        message: 'Invalid mode value',
+        severity: 'warning',
+        suggestion: 'Use "count_down" or "count_up".',
+        value: config.mode
+      });
+    }
+
+    // Validate count_up_cycle if provided
+    const isDynamicCountUpCycle = typeof config.count_up_cycle === 'string' &&
+      (this.isTemplate(config.count_up_cycle) || this.isValidEntityId(config.count_up_cycle));
+
+    if (config.count_up_cycle !== undefined && !isDynamicCountUpCycle && parseDurationInputToMilliseconds(config.count_up_cycle) <= 0) {
+      errors.push({
+        field: 'count_up_cycle',
+        message: 'Invalid count_up_cycle format',
+        severity: 'warning',
+        suggestion: 'Use seconds, HH:MM:SS, or compact units like "30d", "12h", or "90m".',
+        value: config.count_up_cycle
       });
     }
     
@@ -140,7 +178,7 @@ export class ConfigValidator {
     }
     
     // Validate boolean fields
-    const booleanFields = ['show_months', 'show_days', 'show_hours', 'show_minutes', 'show_seconds', 'expired_animation', 'show_progress_text'];
+    const booleanFields = ['show_years', 'show_months', 'show_weeks', 'show_days', 'show_hours', 'show_minutes', 'show_seconds', 'expired_animation', 'show_progress_text', 'invert_progress'];
     booleanFields.forEach(field => {
       if (config[field] !== undefined && !this.isValidBooleanInput(config[field])) {
         errors.push({
@@ -215,8 +253,8 @@ export class ConfigValidator {
       if (error.severity === 'critical' || error.severity === 'warning') {
         switch (error.field) {
           case 'target_date':
-            if (!safeConfig.target_date && !safeConfig.timer_entity) {
-              // Only set a default target_date if no timer_entity is provided
+            if (!safeConfig.target_date && !safeConfig.timer_entity && !safeConfig.auto_discover_alexa && !safeConfig.auto_discover_google) {
+              // Only set a default target_date if no timer_entity or auto-discovery is provided
               const tomorrow = new Date();
               tomorrow.setDate(tomorrow.getDate() + 1);
               safeConfig.target_date = tomorrow.toISOString();
@@ -224,7 +262,7 @@ export class ConfigValidator {
             break;
           case 'background_color':
             if (!this.isValidColorInput(safeConfig.background_color)) {
-              safeConfig.background_color = '#1a1a1a';
+              delete safeConfig.background_color;
             }
             break;
           case 'progress_color':
@@ -240,6 +278,19 @@ export class ConfigValidator {
           case 'icon_size':
             if (!this.isValidDimensionInput(safeConfig.icon_size)) {
               safeConfig.icon_size = 100;
+            }
+            break;
+          case 'mode':
+            safeConfig.mode = 'count_down';
+            break;
+          case 'count_up_goal_date':
+            if (!this.isValidDateInput(safeConfig.count_up_goal_date)) {
+              delete safeConfig.count_up_goal_date;
+            }
+            break;
+          case 'count_up_cycle':
+            if (parseDurationInputToMilliseconds(safeConfig.count_up_cycle) <= 0) {
+              delete safeConfig.count_up_cycle;
             }
             break;
         }
